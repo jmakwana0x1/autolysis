@@ -1,0 +1,9 @@
+out/
+cache/
+broadcast/
+node_modules/
+.env
+*.log
+kit/dist/
+app/dist/
+simulator/out/

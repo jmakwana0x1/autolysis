@@ -1,0 +1,39 @@
+{
+  "chainId": 1337,
+  "pinned": false,
+  "note": "Values below are the plan's working assumptions. `just probe` overwrites this file with on-chain results and sets pinned=true; `just gen` then regenerates src/generated/ProbeConstants.sol. A mismatch between the two fails `just test` (ProbeConstants.t.sol).",
+  "probedAt": null,
+  "rpc": null,
+  "opcodes": {
+    "APPROVE": { "op": 170, "works": null },
+    "TXPARAM": { "op": 176, "works": null },
+    "FRAMEPARAM": { "op": 179, "works": null },
+    "FRAMEDATALOAD": { "op": 180, "works": null },
+    "SIGPARAM": { "op": 182, "works": null }
+  },
+  "txParams": {
+    "sender": 2,
+    "nonceKeyCount": 3,
+    "nonceKey": 4,
+    "sequence": 5,
+    "fee": 6,
+    "expiry": 7,
+    "frameCount": 8,
+    "currentFrame": 9
+  },
+  "frameParams": {
+    "mode": 0,
+    "target": 1,
+    "gasLimit": 2,
+    "stateLimit": 3,
+    "value": 4,
+    "dataSize": 5
+  },
+  "feeFormat": "total_cost",
+  "stakedExternalReads": null,
+  "firstUseKeyStateGas": 97920,
+  "sequenceCeiling": "18446744073709551615",
+  "replacementBumpBps": 1000,
+  "solvencyRejection": null,
+  "reputationCounters": null
+}
