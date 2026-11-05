@@ -12,7 +12,8 @@ import {IRoundFeed} from "../interfaces/IRoundFeed.sol";
 contract RoundFeed is IRoundFeed {
     uint256 internal constant WAD = 1e18;
     uint256 public constant MAX_MOVE_BPS = 1000; // 10%
-    uint256 public constant MAX_AGE = 1 hours; // a round older than this is out of band
+    uint256 public constant MAX_AGE = 1 hours; // a round older than this is out of band (SENDER path)
+    uint256 public constant VERIFY_WINDOW = 4; // K: VERIFY accepts only the last K rounds (no TIMESTAMP)
 
     address public updater;
     uint256 public latest;
@@ -79,6 +80,26 @@ contract RoundFeed is IRoundFeed {
         if (roundId != latest) {
             uint256 ref = rounds[latest].price;
             if (_moveExceeds(ref, r.price)) revert PriceOutOfBand();
+        }
+        return r.price;
+    }
+
+    /// @notice The price to use when VERIFYing a liquidation (validation context, so no TIMESTAMP).
+    ///         Freshness is an index window instead of an age: latest - K < roundId <= latest. Also
+    ///         enforces the band and the breaker. Reverts rather than return a bad price.
+    function checkRoundForVerify(uint256 roundId) external view returns (uint256) {
+        if (roundId == 0 || roundId > latest) revert BadRound();
+        if (roundId + VERIFY_WINDOW <= latest) revert StaleRound(); // outside the K-round window
+        Round memory r = rounds[roundId];
+        if (!r.valid) revert BadRound();
+
+        if (breakerTripped[roundId]) {
+            Round memory next = rounds[roundId + 1];
+            if (!next.valid) revert BreakerPending();
+            if (_moveExceeds(r.price, next.price)) revert BreakerPending();
+        }
+        if (roundId != latest) {
+            if (_moveExceeds(rounds[latest].price, r.price)) revert PriceOutOfBand();
         }
         return r.price;
     }

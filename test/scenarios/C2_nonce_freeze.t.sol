@@ -87,15 +87,20 @@ contract C2NonceFreezeTest is Test {
         uint256 key = FirewallRules.nonceKey(address(market), posId);
         uint256 good = feed.latestRound();
 
-        // Attempt #1 at sequence 0 but citing a bad (future/nonexistent) round: VERIFY approves the
-        // shape, the nonce is burned (seq 0 -> 1), execution fails and bills a failed attempt.
-        env.set(_tx(999, 0));
+        // Attempt #1 at sequence 0 on the good round, but the venue is drained so the swap reverts:
+        // VERIFY approves, the nonce is burned (seq 0 -> 1), execution fails and bills a failed attempt.
+        uint256 bal = usdc.balanceOf(address(curve));
+        vm.prank(address(curve));
+        usdc.transfer(address(0xdead), bal); // drain the venue -> slippage revert in execution
+        env.set(_tx(good, 0));
         vm.prank(address(account));
         account.verify();
         assertEq(env.sequenceOf(key), 1, "nonce should be burned at approve");
         vm.prank(address(account));
-        account.execute(posId, 999); // fails inside the envelope, no liquidation
+        account.execute(posId, good); // fails inside the envelope, no liquidation
         assertEq(market.liquidationCount(posId), 0, "no successful step yet");
+
+        usdc.mint(address(curve), 1e24); // refill the venue for the next attempt
 
         // Attempt #2 must use the next sequence (1). It must still approve and liquidate.
         env.resetApprovals(address(account));

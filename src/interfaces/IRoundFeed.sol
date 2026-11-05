@@ -15,4 +15,7 @@ interface IRoundFeed {
     ///         the acceptable band or tripped the breaker. One guarantee: a liquidation never uses a
     ///         price outside the band.
     function priceForLiquidation(uint256 roundId) external view returns (uint256 price);
+
+    /// @notice The price for VERIFY (validation context: index window, band, breaker; no TIMESTAMP).
+    function checkRoundForVerify(uint256 roundId) external view returns (uint256 price);
 }

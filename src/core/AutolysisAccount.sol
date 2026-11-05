@@ -27,6 +27,8 @@ contract AutolysisAccount {
     error NotOwner();
     error NotSelf();
     error Rejected(FirewallRules.Reject reason);
+    error RoundAlreadyUsed();
+    error NotUnhealthy();
 
     event Approved(uint256 positionId, uint256 roundId);
     event LiquidationOk(uint256 indexed positionId, uint256 debtRepaid, uint256 collateralSold, uint256 fee);
@@ -68,8 +70,16 @@ contract AutolysisAccount {
         FirewallRules.Reject r = FirewallRules.check(v, e);
         if (r != FirewallRules.Reject.OK) revert Rejected(r);
 
-        // Economic gate: only approve when the position is actually liquidatable right now.
-        if (market.healthFactor(positionId) >= 1e18) revert Rejected(FirewallRules.Reject.OK);
+        // Round gate (H1): the cited round must be newer than the last round this position was
+        // liquidated at, so a stale round can't be replayed.
+        if (roundId <= market.lastLiquidatedRound(positionId)) revert RoundAlreadyUsed();
+
+        // Economic gate (H1): the position must be unhealthy at BOTH the cited round's price and the
+        // latest price. healthFactorAtRound reverts (via checkRoundForVerify, no TIMESTAMP) if the round
+        // is outside the window / band / breaker-pending, so a bad round is rejected here in VERIFY, not
+        // paid for and failed in execution.
+        if (market.healthFactorAtRound(positionId, roundId) >= 1e18) revert NotUnhealthy();
+        if (market.healthFactor(positionId) >= 1e18) revert NotUnhealthy();
 
         // APPROVE via DELEGATECALL so ADDRESS stays equal to this account (APPROVE is only valid when
         // the executing address is the frame target).

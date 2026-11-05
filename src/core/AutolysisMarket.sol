@@ -44,6 +44,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     uint256 public nextPositionId = 1;
     mapping(uint256 => Position) public positions;
     mapping(uint256 => TankLedger.Tank) internal tanks;
+    mapping(uint256 => uint256) public lastLiquidatedRound; // highest round a step used for this position
 
     uint256 public totalCollateral; // sum of position collateral (accounting invariant anchor)
     uint256 public totalDebt; // sum of position debt
@@ -183,6 +184,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         totalDebt -= cleared;
         totalSoldOut += step.collateralToSell;
         pos.liquidations += 1;
+        if (roundId > lastLiquidatedRound[positionId]) lastLiquidatedRound[positionId] = roundId;
 
         // Any surplus proceeds above the cleared debt are credited back to the position owner's claim
         // by reducing nothing here (kept as market USDC backing depositors); conservation holds via
@@ -210,6 +212,13 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     }
 
     // --- views ---
+
+    /// @notice Health factor using a specific round's VERIFY price (reverts if the round is unusable).
+    function healthFactorAtRound(uint256 id, uint256 roundId) external view returns (uint256) {
+        uint256 price = feed.checkRoundForVerify(roundId);
+        Position storage pos = positions[id];
+        return LiquidationMath.healthFactor(pos.collateral, price, liqThreshold, pos.debt);
+    }
 
     function healthFactor(uint256 id) external view returns (uint256) {
         return _hf(positions[id]);
