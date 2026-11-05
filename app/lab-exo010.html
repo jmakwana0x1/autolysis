@@ -1,0 +1,194 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>EXO-010 Reputation</title>
+<style>
+  /* Layout: a lab readout — headline verdict, one time-series chart, supporting tiles and a trace table. */
+  :root {
+    --bg: #fcfcfb; --surface: #ffffff; --ink: #1a1d23; --ink-soft: #565b66; --ink-faint: #8b909b;
+    --line: #e6e4df; --grid: #efede8;
+    --baseline: #d97706; --proposed: #2563eb; --throttle: #b91c1c;
+    --good-bg: #e8f0fe; --warn-bg: #fdf0e3;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a; --surface: #1c1f25; --ink: #eceef2; --ink-soft: #a3a9b5; --ink-faint: #6b7280;
+      --line: #2b2f37; --grid: #23272e; --baseline: #f59e0b; --proposed: #60a5fa; --throttle: #f87171;
+      --good-bg: #16233b; --warn-bg: #2e2412; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a; --surface: #1c1f25; --ink: #eceef2; --ink-soft: #a3a9b5; --ink-faint: #6b7280;
+    --line: #2b2f37; --grid: #23272e; --baseline: #f59e0b; --proposed: #60a5fa; --throttle: #f87171;
+    --good-bg: #16233b; --warn-bg: #2e2412; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font-family: var(--body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 32px; line-height: 1.5; }
+  .wrap { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin: 0; }
+  h1 { font-family: var(--sans); font-weight: 600; font-size: clamp(26px, 5vw, 36px); margin: 4px 0 0; text-wrap: balance; letter-spacing: -0.01em; }
+  .lede { color: var(--ink-soft); margin: 10px 0 0; max-width: 62ch; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 560px) { .tiles { grid-template-columns: 1fr; } }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+  .tile .k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+  .tile .v { font-family: var(--sans); font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .n { font-size: 13px; color: var(--ink-soft); }
+  .tile.proposed { background: var(--good-bg); border-color: color-mix(in srgb, var(--proposed) 30%, var(--line)); }
+  .tile.baseline { background: var(--warn-bg); border-color: color-mix(in srgb, var(--baseline) 30%, var(--line)); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h2 { font-family: var(--sans); font-size: 16px; font-weight: 600; margin: 0 0 2px; }
+  .card .sub { color: var(--ink-soft); font-size: 13px; margin: 0 0 14px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 10px; font-size: 13px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); }
+  .swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .swatch.dash { background: repeating-linear-gradient(90deg, var(--throttle) 0 4px, transparent 4px 7px); height: 2px; }
+  .chartbox { position: relative; width: 100%; }
+  svg { display: block; width: 100%; height: auto; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-family: var(--mono); font-size: 11px; padding: 7px 9px; border-radius: 7px; opacity: 0; transition: opacity .1s; white-space: nowrap; transform: translate(-50%, -115%); z-index: 3; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  button:hover { border-color: var(--ink-faint); }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 5px 10px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--ink-faint); font-weight: 500; position: sticky; top: 0; background: var(--surface); }
+  .tablebox { max-height: 300px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .note { font-size: 13px; color: var(--ink-soft); }
+  .note code { font-family: var(--mono); font-size: 12px; background: var(--grid); padding: 1px 5px; border-radius: 4px; }
+  a { color: var(--proposed); }
+  :focus-visible { outline: 2px solid var(--proposed); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Autolysis · EXO-010 simulator</p>
+    <h1>Does the bounce rule throttle honest carriers?</h1>
+    <p class="lede">A crash opens 150 pending liquidations; then the oracle bounces back and invalidates
+      them all at once. Under today's ERC-8421 rule every missed pending counts against the carrier.
+      The proposed rule forgives misses that a market-wide bounce caused. Same replayed trace, two rules.</p>
+  </header>
+
+  <div class="tiles">
+    <div class="tile baseline">
+      <span class="k">Baseline rule · final</span>
+      <span class="v" id="t-base">0.00</span>
+      <span class="n">throttled at event <b id="t-cross">21</b></span>
+    </div>
+    <div class="tile proposed">
+      <span class="k">Proposed rule · final</span>
+      <span class="v" id="t-prop">0.86</span>
+      <span class="n">never crosses the throttle</span>
+    </div>
+    <div class="tile">
+      <span class="k">Throttle line</span>
+      <span class="v" id="t-thr">0.50</span>
+      <span class="n">below this, the mempool rate-limits</span>
+    </div>
+  </div>
+
+  <section class="card">
+    <h2>Carrier reputation over the replayed trace</h2>
+    <p class="sub">Reputation in [0, 1] vs. event index. 3 inclusions during the crash, then 150 bounce misses.</p>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--proposed)"></i> Proposed rule</span>
+      <span><i class="swatch" style="background:var(--baseline)"></i> Baseline rule</span>
+      <span><i class="swatch dash"></i> Throttle 0.50</span>
+    </div>
+    <div class="chartbox">
+      <svg id="chart" viewBox="0 0 720 360" role="img" aria-label="Reputation over time: the baseline rule falls below the throttle and reaches zero; the proposed rule holds at 0.86."></svg>
+      <div class="tip" id="tip"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="controls">
+      <h2 style="margin-right:auto">Trace</h2>
+      <button id="toggle" aria-pressed="false">Show data table</button>
+    </div>
+    <div id="tablebox" class="tablebox" hidden>
+      <table>
+        <thead><tr><th>Event</th><th>Baseline</th><th>Proposed</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:14px">Numbers come from <code>kit/src/sim/exo010.ts</code> replaying
+      <code>bounceTrace(150)</code> — the same function the test suite checks for reproducibility. The
+      baseline reaches the throttle because each of the 150 bounce misses subtracts a penalty; the
+      proposed rule applies no penalty to a miss flagged as caused by the bounce.</p>
+  </section>
+</div>
+
+<script>
+const DATA = {"throttle":0.5,"start":0.8,"baselineFinal":0,"proposedFinal":0.86,"crashIncluded":3,"bounceMisses":150,"pts":[[0,0.8,0.8],[1,0.82,0.82],[2,0.84,0.84],[3,0.86,0.86],[4,0.81,0.86],[5,0.76,0.86],[6,0.71,0.86],[7,0.66,0.86],[8,0.61,0.86],[9,0.56,0.86],[10,0.51,0.86],[11,0.46,0.86],[12,0.41,0.86],[13,0.36,0.86],[14,0.31,0.86],[15,0.26,0.86],[16,0.21,0.86],[17,0.16,0.86],[18,0.11,0.86],[19,0.06,0.86],[20,0.01,0.86],[21,0,0.86],[22,0,0.86],[23,0,0.86],[24,0,0.86],[25,0,0.86],[26,0,0.86],[27,0,0.86],[28,0,0.86],[29,0,0.86],[30,0,0.86],[31,0,0.86],[32,0,0.86],[33,0,0.86],[34,0,0.86],[35,0,0.86],[36,0,0.86],[37,0,0.86],[38,0,0.86],[39,0,0.86],[40,0,0.86],[41,0,0.86],[42,0,0.86],[43,0,0.86],[44,0,0.86],[45,0,0.86],[46,0,0.86],[47,0,0.86],[48,0,0.86],[49,0,0.86],[50,0,0.86],[51,0,0.86],[52,0,0.86],[53,0,0.86],[54,0,0.86],[55,0,0.86],[56,0,0.86],[57,0,0.86],[58,0,0.86],[59,0,0.86],[60,0,0.86],[61,0,0.86],[62,0,0.86],[63,0,0.86],[64,0,0.86],[65,0,0.86],[66,0,0.86],[67,0,0.86],[68,0,0.86],[69,0,0.86],[70,0,0.86],[71,0,0.86],[72,0,0.86],[73,0,0.86],[74,0,0.86],[75,0,0.86],[76,0,0.86],[77,0,0.86],[78,0,0.86],[79,0,0.86],[80,0,0.86],[81,0,0.86],[82,0,0.86],[83,0,0.86],[84,0,0.86],[85,0,0.86],[86,0,0.86],[87,0,0.86],[88,0,0.86],[89,0,0.86],[90,0,0.86],[91,0,0.86],[92,0,0.86],[93,0,0.86],[94,0,0.86],[95,0,0.86],[96,0,0.86],[97,0,0.86],[98,0,0.86],[99,0,0.86],[100,0,0.86],[101,0,0.86],[102,0,0.86],[103,0,0.86],[104,0,0.86],[105,0,0.86],[106,0,0.86],[107,0,0.86],[108,0,0.86],[109,0,0.86],[110,0,0.86],[111,0,0.86],[112,0,0.86],[113,0,0.86],[114,0,0.86],[115,0,0.86],[116,0,0.86],[117,0,0.86],[118,0,0.86],[119,0,0.86],[120,0,0.86],[121,0,0.86],[122,0,0.86],[123,0,0.86],[124,0,0.86],[125,0,0.86],[126,0,0.86],[127,0,0.86],[128,0,0.86],[129,0,0.86],[130,0,0.86],[131,0,0.86],[132,0,0.86],[133,0,0.86],[134,0,0.86],[135,0,0.86],[136,0,0.86],[137,0,0.86],[138,0,0.86],[139,0,0.86],[140,0,0.86],[141,0,0.86],[142,0,0.86],[143,0,0.86],[144,0,0.86],[145,0,0.86],[146,0,0.86],[147,0,0.86],[148,0,0.86],[149,0,0.86],[150,0,0.86],[151,0,0.86],[152,0,0.86],[153,0,0.86]]};
+const svg = document.getElementById('chart');
+const NS = 'http://www.w3.org/2000/svg';
+const W = 720, H = 360, m = { t: 20, r: 54, b: 40, l: 44 };
+const iw = W - m.l - m.r, ih = H - m.t - m.b;
+const xs = DATA.pts.map(p => p[0]);
+const xmax = Math.max(...xs);
+const X = t => m.l + (t / xmax) * iw;
+const Y = v => m.t + (1 - v) * ih;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function el(name, attrs) { const e = document.createElementNS(NS, name); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+function draw() {
+  svg.textContent = '';
+  const grid = css('--grid'), faint = css('--ink-faint'), soft = css('--ink-soft');
+  [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+    svg.appendChild(el('line', { x1: m.l, y1: Y(v), x2: m.l + iw, y2: Y(v), stroke: grid, 'stroke-width': 1 }));
+    const lbl = el('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: faint, 'font-family': 'var(--mono)' });
+    lbl.textContent = v.toFixed(2); svg.appendChild(lbl);
+  });
+  [0, Math.round(xmax/2), xmax].forEach(t => {
+    const lbl = el('text', { x: X(t), y: m.t + ih + 24, 'text-anchor': 'middle', 'font-size': 11, fill: faint, 'font-family': 'var(--mono)' });
+    lbl.textContent = t; svg.appendChild(lbl);
+  });
+  const xaxt = el('text', { x: m.l + iw/2, y: H - 4, 'text-anchor': 'middle', 'font-size': 11, fill: soft }); xaxt.textContent = 'event index'; svg.appendChild(xaxt);
+  svg.appendChild(el('line', { x1: m.l, y1: Y(DATA.throttle), x2: m.l + iw, y2: Y(DATA.throttle), stroke: css('--throttle'), 'stroke-width': 2, 'stroke-dasharray': '4 3' }));
+  const path = (idx, color) => {
+    let d = '';
+    DATA.pts.forEach((p, i) => { d += (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[idx]).toFixed(1) + ' '; });
+    svg.appendChild(el('path', { d, fill: 'none', stroke: color, 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  };
+  path(2, css('--proposed'));
+  path(1, css('--baseline'));
+  const last = DATA.pts[DATA.pts.length - 1];
+  const endlab = (v, color, txt) => { const g = el('text', { x: m.l + iw + 6, y: Y(v) + 4, 'font-size': 12, fill: color, 'font-family': 'var(--sans)', 'font-weight': 600 }); g.textContent = txt; svg.appendChild(g); };
+  endlab(last[2], css('--proposed'), last[2].toFixed(2));
+  endlab(Math.max(last[1], 0.03), css('--baseline'), last[1].toFixed(2));
+  const cross = DATA.pts.find(p => p[1] < DATA.throttle);
+  if (cross) svg.appendChild(el('circle', { cx: X(cross[0]), cy: Y(DATA.throttle), r: 4, fill: css('--throttle') }));
+}
+const tip = document.getElementById('tip');
+svg.addEventListener('pointermove', e => {
+  const r = svg.getBoundingClientRect();
+  const px = (e.clientX - r.left) / r.width * W;
+  const t = Math.round(Math.max(0, Math.min(xmax, (px - m.l) / iw * xmax)));
+  const p = DATA.pts[Math.min(t, DATA.pts.length - 1)];
+  if (!p) return;
+  const cx = X(p[0]) / W * r.width, cy = Y(p[2]) / H * r.height;
+  tip.style.left = cx + 'px'; tip.style.top = cy + 'px'; tip.style.opacity = 1;
+  tip.innerHTML = 'event ' + p[0] + ' · <b style="color:var(--proposed)">' + p[2].toFixed(2) + '</b> / <b style="color:var(--baseline)">' + p[1].toFixed(2) + '</b>';
+});
+svg.addEventListener('pointerleave', () => tip.style.opacity = 0);
+const tbody = document.getElementById('tbody');
+DATA.pts.forEach(p => { const tr = document.createElement('tr'); tr.innerHTML = '<td>' + p[0] + '</td><td>' + p[1].toFixed(2) + '</td><td>' + p[2].toFixed(2) + '</td>'; tbody.appendChild(tr); });
+const toggle = document.getElementById('toggle'), box = document.getElementById('tablebox');
+toggle.addEventListener('click', () => { const on = box.hidden; box.hidden = !on; toggle.setAttribute('aria-pressed', String(on)); toggle.textContent = on ? 'Hide data table' : 'Show data table'; });
+document.getElementById('t-base').textContent = DATA.baselineFinal.toFixed(2);
+document.getElementById('t-prop').textContent = DATA.proposedFinal.toFixed(2);
+document.getElementById('t-thr').textContent = DATA.throttle.toFixed(2);
+const crossEvt = DATA.pts.find(p => p[1] < DATA.throttle);
+document.getElementById('t-cross').textContent = crossEvt ? crossEvt[0] : '—';
+draw();
+let mq = window.matchMedia('(prefers-color-scheme: dark)');
+mq.addEventListener && mq.addEventListener('change', draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+</script>

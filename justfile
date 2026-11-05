@@ -40,6 +40,10 @@ scene name:
 e2e:
     cd kit && npm run --silent e2e
 
+# Run the EXO-010 reputation simulator and refresh the Lab chart data (no devnet needed)
+sim:
+    cd kit && node scripts/gen-exo010-chart.mjs
+
 # Redeploy and seed everything on the devnet (target: < 3 minutes)
 reset:
     forge script script/Deploy.s.sol --rpc-url $RPC_URL --broadcast --slow
