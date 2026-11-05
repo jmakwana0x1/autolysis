@@ -47,3 +47,18 @@ just sim          # EXO-010 simulator -> Lab chart data
 just probe        # devnet probes (needs RPC_URL + ACCOUNT); then `just gen`
 cd kit && npx vitest run    # kit unit tests
 ```
+
+## Devnet-readiness pass (third review, R1–R5)
+
+Labels: **on devnet** · **local test** (runs on anvil / Foundry here) · **mock only** · **written, not run**.
+
+| Item | State | Label |
+| --- | --- | --- |
+| R1 deploy + seed | `script/Deploy.s.sol` + `kit/src/seed.ts` run end to end on anvil: all addresses have code, 3 borrowers at HF 1.03/1.06/1.10, liquidity, house, makers | **local test** |
+| R2 staking | `IStakingRegistry` + `AutolysisAccount.stake`; VERIFY measured at ~129k gas (< 1M staked limit) via a mock registry; deploy stakes when `STAKING_REGISTRY` is set | **local test** (mock registry); registry address + MIN_STAKE_VALUE on 1337 **written, not run** |
+| R3 probes | `ProbeOpcodes.sol` (real `HegotaSupport`) deploys on anvil; probes 1–2 use real methods + per-frame status + receipt log, record the raw response, never pin unconfirmed | opcode deploy **local test**; probe execution **written, not run** (needs frame opcodes) |
+| R4 no-signature | liquidation tx built with `signatures: []`; ARBITRARY fallback; `signatureForm` probe + pin-required field | **local test** (build/encode); which form the mempool admits **written, not run** |
+| R5 Aqua fork | gated fork compiles vs upstream SwapVM/Aqua; LiquidationGate verified at `_dispatch`; `ISwapVMRouter` ABI seam | gate **local test**; full maker-ship swap through the hook **written, not run** (recipe in DESIGN.md) |
+
+Nothing is **on devnet** yet (no RPC in this environment). Fresh clone: run `just setup` once (builds the
+vendored hegota-support package), then `just test` / `just aqua`.

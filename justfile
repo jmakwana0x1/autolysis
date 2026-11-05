@@ -5,6 +5,11 @@ export PATH := env_var('HOME') + "/.foundry/bin:" + env_var('PATH')
 default:
     @just --list
 
+# One-time setup for a fresh clone: build the vendored hegota-support TS package (its dist/ is gitignored)
+setup:
+    cd lib/hegota-support && npm install --no-audit --no-fund && npm run build
+    cd kit && npm install --no-audit --no-fund
+
 # Regenerate Solidity constants from deployments/probes.json
 gen:
     node kit/scripts/gen-constants.mjs
