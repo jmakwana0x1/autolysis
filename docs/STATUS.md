@@ -7,6 +7,8 @@
 
 | 2. Mempool behavior | Local suites green | Replacement carrier (tank-aware concurrency, 10% fee-bump keyed replacement), attack builders, and the adversarial scenarios as Foundry mock tests: rescue invalidates a pending liquidation, gradual three-step sale (HF never falls), key-append / fake-round / fee-griefing rejected, failed-attempt billing within the cap. Carrier + attack builders covered by vitest. Devnet scenes stubbed (need RPC); each names its matching local test. |
 
+| 3. Uniswap backstop | Local suites green | `BackstopHook` (v4-core, return-delta on beforeSwap): registered-market liquidations fill 1:1 from the deposits tier, outside swappers and unregistered markets follow the vanilla path matching a no-hook pool to the wei, settle-before-swap (enforced by the unlock), reentrancy guard. Tests cover both currency orderings, pool-manipulation-harmless, and a 10k-run deltas-net-to-zero fuzz. `BaseHook` + CREATE2 salt-mining deploy script. FEEDBACK.md written. |
+
 ## Running the suites
 
 ```bash
