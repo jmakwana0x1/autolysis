@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IFrameEnv} from "../frame/IFrameEnv.sol";
 import {IStakingRegistry} from "../frame/IStakingRegistry.sol";
-import {TxView, FrameTypes} from "../frame/FrameTypes.sol";
+import {CanonicalView, FrameTypes} from "../frame/FrameTypes.sol";
 import {FirewallRules} from "../libraries/FirewallRules.sol";
 import {ProbeConstants} from "../generated/ProbeConstants.sol";
 import {AutolysisMarket} from "./AutolysisMarket.sol";
@@ -55,7 +55,6 @@ contract AutolysisAccount {
     error NoSnapshot();
     error SnapshotRoundMismatch();
 
-    event Approved(uint256 positionId, uint256 roundId);
     event LiquidationOk(uint256 indexed positionId, uint256 debtRepaid, uint256 collateralSold, uint256 fee);
     event LiquidationFailed(uint256 indexed positionId, uint256 fee);
 
@@ -123,10 +122,10 @@ contract AutolysisAccount {
     ///      STAKED (see IStakingRegistry / stake()) for those reads to be allowed during validation; the
     ///      deploy script stakes it where a registry is configured, and probe 3 confirms it on chain.
     function verifyLiquidation() external {
-        TxView memory v = env.load();
+        CanonicalView memory c = env.loadCanonical();
 
         // The execute frame carries (positionId, roundId); decode to build on-chain expectations.
-        (uint256 positionId, uint256 roundId) = _decodeExecuteArgs(v);
+        (uint256 positionId, uint256 roundId) = FirewallRules.execArgs(c);
 
         FirewallRules.Expect memory e;
         e.account = address(this);
@@ -135,9 +134,9 @@ contract AutolysisAccount {
         e.roundId = roundId;
         e.feeCapTotal = feeCapTotal;
         e.firstUseStateCost = ProbeConstants.FIRST_USE_KEY_STATE_GAS;
-        e.keyIsNew = v.sequence == 0; // first use of the key is sequence 0, not count 0 (C2)
+        e.keyIsNew = c.sequence == 0; // first use of the key is sequence 0, not count 0 (C2)
 
-        FirewallRules.Reject r = FirewallRules.check(v, e);
+        FirewallRules.Reject r = FirewallRules.check(c, e);
         if (r != FirewallRules.Reject.OK) revert Rejected(r);
 
         // Round + economic gate (H1). Two ways to source it:
@@ -151,11 +150,11 @@ contract AutolysisAccount {
         }
 
         // APPROVE via DELEGATECALL so ADDRESS stays equal to this account (APPROVE is only valid when
-        // the executing address is the frame target).
+        // the executing address is the frame target). No event: VERIFY is read-only on the devnet, and
+        // the SENDER frame's LiquidationOk/LiquidationFailed already records the outcome.
         (bool ok,) = address(env)
             .delegatecall(abi.encodeWithSelector(IFrameEnv.approve.selector, FrameTypes.SCOPE_EXECUTION_AND_PAYMENT));
         require(ok, "approve failed");
-        emit Approved(positionId, roundId);
     }
 
     /// @notice SENDER frame entry point: the never-revert envelope. Runs one gradual liquidation step;
@@ -205,16 +204,5 @@ contract AutolysisAccount {
         if (roundId <= s.lastAttemptRound) revert RoundAlreadyUsed();
         if (s.healthAtRound >= 1e18) revert NotUnhealthy();
         if (s.healthLatest >= 1e18) revert NotUnhealthy();
-    }
-
-    function _decodeExecuteArgs(TxView memory v) internal pure returns (uint256 positionId, uint256 roundId) {
-        // The execute frame is frame 1 in the canonical shape; guard length before decoding.
-        require(v.frames.length == 2, "shape");
-        bytes memory d = v.frames[1].data;
-        require(d.length == 4 + 64, "args");
-        assembly {
-            positionId := mload(add(d, 36))
-            roundId := mload(add(d, 68))
-        }
     }
 }

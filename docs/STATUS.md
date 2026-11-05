@@ -7,16 +7,16 @@ build), so the honest split is **proven by local suite** vs **needs a devnet**.
 > (chain 1337, endpoints + predeployed Uniswap v4 + `NaiveStakingRegistry`), read from the vendored
 > `forshtat/mempool-workshop` (`bcfe02a`) and `-sidecar` (`2e22ff0`). Those facts override assumptions in
 > `PLAN-v4.3.md` / `REVIEW-3`. The load-bearing one: **`MAX_VERIFY_GAS = 100,000`, no 1M staked allowance
-> in this sidecar.** The staked-read VERIFY path measures ~131k and is **inadmissible** here; the
-> storage-only VERIFY path (W1.5, ~98.6k on the mock) is what ships on the devnet. Authoritative gas comes
-> from `ethrex_simulateFrameTransaction` per run.
+> in this sidecar.** After A1 (slim VERIFY, `loadCanonical()`), the **mock only** VERIFY gas is
+> **70,728** (outside reads) and **49,321** (storage-only), both under 99,900 on the mock. Which path ships
+> is decided in A5 from the devnet's `ethrex_simulateFrameTransaction` `frames[0].gasUsed` (**written, not run**).
 
 ## Proven by local suite (Foundry + v4-core/SwapVM + kit vitest)
 
 | Area | Where | Suite |
 | --- | --- | --- |
 | Liquidation math (close factor, HF, slippage step, insolvency) | `src/libraries/LiquidationMath.sol` | `test/fuzz/LiquidationMath.t.sol`, `test/fuzz/Differential.t.sol` (kit↔Solidity) |
-| Firewall: one tx shape per (position, step), ALLOWED_SCOPE rule | `src/libraries/FirewallRules.sol` | `test/fuzz/FirewallRules.t.sol` (mutation fuzzer) |
+| Firewall: one tx shape per (position, step), ALLOWED_SCOPE rule, on the fixed `CanonicalView` (A1) | `src/libraries/FirewallRules.sol`, `src/frame/CanonicalReader.sol` | `test/fuzz/FirewallRules.t.sol` (mutation fuzzer + mock/reference agreement) |
 | Round feed: band + two-round breaker + VERIFY window | `src/core/RoundFeed.sol` | `test/unit/RoundFeed.t.sol`, `test/scenarios/H1_verify_round.t.sol` |
 | Account: caller guard, VERIFY round/health gate, never-revert envelope via `maxCost()` | `src/core/AutolysisAccount.sol` | `test/scenarios/{C1,C2,H1,N5_N6}.t.sol`, `test/integration/Liquidation.t.sol` |
 | Market: gas billed in collateral/ETH, surplus + bad-debt, one attempt per round, conservation | `src/core/AutolysisMarket.sol` | `test/scenarios/{C6_haircut,H3_surplus_baddebt,N5_N6}.t.sol`, `test/invariant/Market.invariant.t.sol` (11 invariants @ 1000×200) |
@@ -63,7 +63,7 @@ Labels: **on devnet** · **local test** (runs on anvil / Foundry here) · **mock
 | Item | State | Label |
 | --- | --- | --- |
 | R1 deploy + seed | `script/Deploy.s.sol` + `kit/src/seed.ts` run end to end on anvil: all addresses have code, 3 borrowers at HF 1.03/1.06/1.10, liquidity, house, makers | **local test** |
-| R2 staking | `NaiveStakingRegistry` at `0xD51c…D2F`, minStake 0.01 ETH, keyed on msg.sender; deploy calls `account.stake{0.012 ETH}(86400)` and defaults the registry to the devnet address. **MAX_VERIFY_GAS = 100k, NOT 1M** — the staked-read VERIFY path (~131k, R2_staking.t.sol) is **inadmissible**; the storage-only path (W1.5, ~98.6k) ships. | staking build **local test**; the 100k cap vs real `frames[0].gasUsed` **written, not run** (devnet simulate) |
+| R2 staking | `NaiveStakingRegistry` at `0xD51c…D2F`, minStake 0.01 ETH, keyed on msg.sender; deploy calls `account.stake{0.012 ETH}(86400)` and defaults the registry to the devnet address. **MAX_VERIFY_GAS = 100k, NOT 1M.** A1 mock gas: outside reads 70,728, storage-only 49,321 (`A1_verify_gas.t.sol`, **mock only**); path chosen in A5 from devnet simulate. | staking build **local test**; the 100k cap vs real `frames[0].gasUsed` **written, not run** (devnet simulate) |
 | R3 probes | `ProbeOpcodes.sol` (real `HegotaSupport`) deploys on anvil; probes rewritten on `ethrex_simulateFrameTransaction([tx,"latest",{trace:true}])` reading `{succeeded,gasUsed,violation}`; added a VERIFY-gas probe (`frames[0].gasUsed` ≤ 99,900) | opcode deploy **local test**; probe execution **written, not run** (needs the devnet) |
 | R4 signature | keyless liquidation = one ARBITRARY entry `{scheme:0,…}` by **default** (per devnet facts), empty-list is the probed stretch form; ARBITRARY costs 100 gas toward MAX_VERIFY_GAS | **local test** (build/encode); whether empty-list is admitted **written, not run** |
 | R5 Aqua fork | gated fork compiles vs upstream SwapVM/Aqua; LiquidationGate verified at `_dispatch`; full maker-ship swap through the real `Aqua.ship`/`swap` ABI | gate + **full fill** **local test** (see W2 below) |

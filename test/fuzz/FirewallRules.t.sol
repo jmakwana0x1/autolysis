@@ -3,12 +3,15 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {FirewallRules} from "../../src/libraries/FirewallRules.sol";
-import {TxView, FrameView, FrameTypes} from "../../src/frame/FrameTypes.sol";
+import {TxView, FrameView, FrameTypes, CanonicalView} from "../../src/frame/FrameTypes.sol";
+import {CanonicalFrom} from "../mocks/CanonicalFrom.sol";
+import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 import {ProbeConstants} from "../../src/generated/ProbeConstants.sol";
 
 /// @notice The firewall contract: approve exactly one transaction shape per (position, step). Start
-///         from the canonical tx, mutate exactly one field, and assert VERIFY rejects. The positive
-///         property: the unmutated canonical tx always approves.
+///         from the canonical tx, mutate exactly one field, derive the fixed `CanonicalView` the devnet
+///         would report (`CanonicalFrom`, which MockFrameEnv is checked to agree with), and assert the
+///         rules reject. The positive property: the unmutated canonical tx always approves.
 contract FirewallRulesTest is Test {
     address constant ACCOUNT = address(0xA11CE);
     address constant MARKET = address(0x3A12E7);
@@ -57,22 +60,23 @@ contract FirewallRulesTest is Test {
 
     // Positive property: the canonical tx approves.
     function test_canonicalApproves() public pure {
-        assertEq(uint256(FirewallRules.check(_canonical(), _expect())), uint256(FirewallRules.Reject.OK));
+        assertEq(uint256(_check(_canonical(), _expect())), uint256(FirewallRules.Reject.OK));
+    }
+
+    function _check(TxView memory v, FirewallRules.Expect memory e) internal pure returns (FirewallRules.Reject) {
+        return FirewallRules.check(CanonicalFrom.from(v), e);
     }
 
     function _rejects(TxView memory v) internal pure {
-        FirewallRules.Reject r = FirewallRules.check(v, _expect());
+        FirewallRules.Reject r = _check(v, _expect());
         assertTrue(r != FirewallRules.Reject.OK, "mutation was not rejected");
     }
 
-    // --- single-field mutations: each must flip OK -> reject ---
-
-    function test_mut_sender(address x) public pure {
-        vm.assume(x != ACCOUNT);
-        TxView memory v = _canonical();
-        v.sender = x;
-        _rejects(v);
+    function _rejectsC(CanonicalView memory c) internal pure {
+        assertTrue(FirewallRules.check(c, _expect()) != FirewallRules.Reject.OK, "mutation was not rejected");
     }
+
+    // --- single-field mutations: each must flip OK -> reject ---
 
     function test_mut_frameCount() public pure {
         TxView memory v = _canonical();
@@ -98,13 +102,6 @@ contract FirewallRulesTest is Test {
         _rejects(v);
     }
 
-    function test_mut_verifyMode(uint8 m) public pure {
-        vm.assume(m != FrameTypes.MODE_VERIFY);
-        TxView memory v = _canonical();
-        v.frames[0].mode = m;
-        _rejects(v);
-    }
-
     function test_mut_verifyAllowedScope(uint256 scope) public pure {
         vm.assume(scope != FrameTypes.SCOPE_EXECUTION_AND_PAYMENT);
         TxView memory v = _canonical();
@@ -116,13 +113,6 @@ contract FirewallRulesTest is Test {
         vm.assume(m != FrameTypes.MODE_SENDER);
         TxView memory v = _canonical();
         v.frames[1].mode = m;
-        _rejects(v);
-    }
-
-    function test_mut_verifyTarget(address x) public pure {
-        vm.assume(x != ACCOUNT);
-        TxView memory v = _canonical();
-        v.frames[0].target = x;
         _rejects(v);
     }
 
@@ -205,6 +195,66 @@ contract FirewallRulesTest is Test {
         v.frames[0].stateLimit = 0;
         FirewallRules.Expect memory e = _expect();
         e.keyIsNew = false;
-        assertEq(uint256(FirewallRules.check(v, e)), uint256(FirewallRules.Reject.OK));
+        assertEq(uint256(_check(v, e)), uint256(FirewallRules.Reject.OK));
+    }
+
+    function test_mut_execValue(uint256 value) public pure {
+        vm.assume(value != 0);
+        TxView memory v = _canonical();
+        v.frames[1].value = value;
+        _rejects(v);
+    }
+
+    // Each of the execute frame's three calldata words, corrupted anywhere in its live bytes, rejects.
+    // (Word 2 carries only 4 live bytes; the rest is past the 68-byte data and reads as zero on chain.)
+    function test_mut_execWords(uint8 which, bytes32 flip) public pure {
+        which = uint8(bound(which, 0, 2));
+        CanonicalView memory c = CanonicalFrom.from(_canonical());
+        if (which == 2) flip &= bytes32(uint256(type(uint32).max) << 224);
+        vm.assume(flip != 0);
+        if (which == 0) c.execWord0 ^= flip;
+        else if (which == 1) c.execWord1 ^= flip;
+        else c.execWord2 ^= flip;
+        _rejectsC(c);
+    }
+
+    function test_mut_keyCountZero() public pure {
+        TxView memory v = _canonical();
+        v.nonceKeys = new uint256[](0);
+        _rejects(v);
+    }
+
+    // Out of scope for the rules since A1, by design: sender, frame 0 mode/target/selector and the frame
+    // gas limits are not in CanonicalView. Sender and frame 0 target are enforced by APPROVE itself
+    // (resolved_target == tx.sender == ADDRESS); frame 0 mode is a devnet probe (B3). Pin that the rules
+    // do not look at them, so a future change that starts depending on them is a visible decision.
+    function test_rulesIgnoreApproveEnforcedFields(address x, uint8 m, uint256 gl) public pure {
+        TxView memory v = _canonical();
+        v.sender = x;
+        v.frames[0].target = x;
+        v.frames[0].mode = m;
+        v.frames[0].gasLimit = gl;
+        v.frames[1].gasLimit = gl;
+        v.frames[0].data = hex"deadbeef";
+        assertEq(uint256(_check(v, _expect())), uint256(FirewallRules.Reject.OK));
+    }
+
+    // The mock's per-opcode helper tables reproduce the reference derivation, through the same
+    // CanonicalReader code the devnet env runs.
+    function test_mockAgreesWithReference(uint8 kind, uint256 x) public {
+        TxView memory v = _canonical();
+        kind = uint8(bound(kind, 0, 5));
+        if (kind == 1) v.frames[1].data = abi.encodeWithSelector(FirewallRules.EXECUTE_SEL, x, x >> 7);
+        if (kind == 2) v.frames[1].value = x;
+        if (kind == 3) v.nonceKeys[0] = x;
+        if (kind == 4) v.frames[1].data = abi.encodePacked(v.frames[1].data, uint8(x));
+        if (kind == 5) {
+            FrameView[] memory one = new FrameView[](1);
+            one[0] = v.frames[0];
+            v.frames = one;
+        }
+        MockFrameEnv env = new MockFrameEnv();
+        env.set(v);
+        assertEq(keccak256(abi.encode(env.loadCanonical())), keccak256(abi.encode(CanonicalFrom.from(v))));
     }
 }

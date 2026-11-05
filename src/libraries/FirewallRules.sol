@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {TxView, FrameView, FrameTypes} from "../frame/FrameTypes.sol";
+import {CanonicalView, FrameTypes} from "../frame/FrameTypes.sol";
 import {ProbeConstants} from "../generated/ProbeConstants.sol";
 
 /// @title FirewallRules
 /// @notice Pure decision for VERIFY: does this frame transaction match the one canonical shape allowed
-///         for liquidating (position, step)? One guarantee: approves exactly one transaction shape per
-///         (position, step). Any single mutation of the canonical tx must flip the answer to reject.
+///         for liquidating (position, step)? Any single mutation of a field it reads must flip the answer
+///         to reject. It reads the fixed-size `CanonicalView`; the fields it leaves to APPROVE / the
+///         protocol are listed on `CanonicalView` (FrameTypes.sol).
 /// @dev Keeps no state. The account supplies the on-chain expectations (`Expect`), the `FrameEnv`
-///      supplies what was actually submitted (`TxView`).
+///      supplies what was actually submitted.
 library FirewallRules {
-    /// @dev selector of AutolysisAccount.verify() and execute(uint256,uint256); kept here so the rule
-    ///      is self-contained and fuzzable without deploying the account.
     bytes4 internal constant VERIFY_SEL = 0x3ad51b8d; // bytes4(keccak256("verifyLiquidation()"))
     bytes4 internal constant EXECUTE_SEL = 0xf3ab9cad; // bytes4(keccak256("selfLiquidate(uint256,uint256)"))
+    uint256 internal constant EXEC_DATA_LENGTH = 4 + 32 + 32;
 
+    /// @dev Ordinals are part of the `Rejected(reason)` ABI the kit decodes: append only, never reorder.
     enum Reject {
         OK,
         FRAME_COUNT,
-        VERIFY_FRAME,
+        VERIFY_FRAME, // unused since A1: frame 0 target/selector are implied by APPROVE (see CanonicalView)
         EXEC_FRAME_MODE,
         EXEC_TARGET,
         EXEC_SELECTOR,
@@ -33,15 +34,16 @@ library FirewallRules {
         FEE_CAP,
         STATE_BUDGET,
         ALLOWED_SCOPE,
-        SENDER
+        SENDER, // unused since A1: sender == account is implied by APPROVE (see CanonicalView)
+        EXEC_VALUE
     }
 
     struct Expect {
-        address account; // frame target for both frames; tx sender
+        address account; // frame 1 target
         address market;
         uint256 positionId;
         uint256 roundId;
-        uint256 feeCapTotal; // max total cost (debt units of the devnet gas token), per fee format
+        uint256 feeCapTotal; // max total cost (devnet gas-token units)
         uint256 firstUseStateCost; // ProbeConstants.FIRST_USE_KEY_STATE_GAS when the key is new
         bool keyIsNew; // first use of this nonce key
     }
@@ -52,59 +54,47 @@ library FirewallRules {
         return h & ((uint256(1) << 248) - 1); // zero top byte
     }
 
-    /// @notice Returns Reject.OK iff `v` is exactly the canonical liquidation transaction for `e`.
-    function check(TxView memory v, Expect memory e) internal pure returns (Reject) {
-        // Sender must be the account itself (self-paid).
-        if (v.sender != e.account) return Reject.SENDER;
+    /// @notice (positionId, roundId) from the execute frame's three calldata words
+    ///         selector(4) ++ positionId(32) ++ roundId(32).
+    function execArgs(CanonicalView memory c) internal pure returns (uint256 positionId, uint256 roundId) {
+        positionId = (uint256(c.execWord0) << 32) | (uint256(c.execWord1) >> 224);
+        roundId = (uint256(c.execWord1) << 32) | (uint256(c.execWord2) >> 224);
+    }
 
+    /// @notice Returns Reject.OK iff `c` is the canonical liquidation transaction for `e`.
+    function check(CanonicalView memory c, Expect memory e) internal pure returns (Reject) {
         // Exactly two frames: VERIFY then SENDER-execute.
-        if (v.frames.length != 2) return Reject.FRAME_COUNT;
+        if (c.frameCount != 2) return Reject.FRAME_COUNT;
 
-        FrameView memory vf = v.frames[0];
-        FrameView memory xf = v.frames[1];
+        // Frame 0 may approve both execution and payment (the account self-pays).
+        if (c.verifyAllowedScope != FrameTypes.SCOPE_EXECUTION_AND_PAYMENT) return Reject.ALLOWED_SCOPE;
 
-        // Frame 0: VERIFY mode, targets the account, calls verify() with empty args, and is allowed to
-        // approve both execution and payment (so the account can self-pay).
-        if (vf.mode != FrameTypes.MODE_VERIFY) return Reject.VERIFY_FRAME;
-        if (vf.target != e.account) return Reject.VERIFY_FRAME;
-        if (vf.data.length != 4 || bytes4(vf.data) != VERIFY_SEL) return Reject.VERIFY_FRAME;
-        if (vf.allowedScope != FrameTypes.SCOPE_EXECUTION_AND_PAYMENT) return Reject.ALLOWED_SCOPE;
+        // Frame 1: SENDER mode, targets the account, moves no value, calls selfLiquidate(pos, round).
+        if (c.execMode != FrameTypes.MODE_SENDER) return Reject.EXEC_FRAME_MODE;
+        if (c.execTarget != e.account) return Reject.EXEC_TARGET;
+        if (c.execValue != 0) return Reject.EXEC_VALUE;
+        if (c.execDataLength != EXEC_DATA_LENGTH) return Reject.EXEC_CALLDATA_LEN;
+        if (bytes4(c.execWord0) != EXECUTE_SEL) return Reject.EXEC_SELECTOR;
 
-        // Frame 1: SENDER mode, targets the account.
-        if (xf.mode != FrameTypes.MODE_SENDER) return Reject.EXEC_FRAME_MODE;
-        if (xf.target != e.account) return Reject.EXEC_TARGET;
-        if (xf.data.length != 4 + 32 + 32) return Reject.EXEC_CALLDATA_LEN;
-        if (bytes4(xf.data) != EXECUTE_SEL) return Reject.EXEC_SELECTOR;
-
-        (uint256 posId, uint256 roundId) = _decodeTwo(xf.data);
+        (uint256 posId, uint256 roundId) = execArgs(c);
         if (posId != e.positionId) return Reject.POSITION_ID;
         if (roundId != e.roundId) return Reject.ROUND_ID;
 
         // Exactly one nonce key, equal to H(market,id) with zero top byte.
-        if (v.nonceKeys.length != 1) return v.nonceKeys.length > 1 ? Reject.SECOND_KEY : Reject.KEY_COUNT;
-        uint256 expectedKey = nonceKey(e.market, e.positionId);
-        if (v.nonceKeys[0] != expectedKey) return Reject.KEY_VALUE;
-        if (v.nonceKeys[0] >> 248 != 0) return Reject.KEY_TOP_BYTE;
+        if (c.nonceKeyCount != 1) return c.nonceKeyCount > 1 ? Reject.SECOND_KEY : Reject.KEY_COUNT;
+        if (c.nonceKey0 != nonceKey(e.market, e.positionId)) return Reject.KEY_VALUE;
+        if (c.nonceKey0 >> 248 != 0) return Reject.KEY_TOP_BYTE;
 
-        // The keyed nonce order is enforced by the protocol (EIP-8250), not by the firewall: a failed
-        // attempt burns the nonce without advancing the liquidation count, so the firewall must not tie
-        // the submitted sequence to that count (C2). `keyIsNew` is derived from the sequence itself.
+        // The keyed nonce order is enforced by the protocol (EIP-8250), not by the firewall (C2).
 
-        // Fee cap, in the probed fee format.
-        uint256 totalGas = vf.gasLimit + xf.gasLimit;
-        uint256 feeTotal = ProbeConstants.FEE_FORMAT == FrameTypes.FEE_PER_GAS ? v.feeParam * totalGas : v.feeParam;
-        if (feeTotal > e.feeCapTotal) return Reject.FEE_CAP;
+        // Fee cap on MAX_COST, total-cost format. The view carries no gas limits, so a per-gas fee format
+        // cannot be checked: fail closed if the probe ever reports one.
+        if (ProbeConstants.FEE_FORMAT != FrameTypes.FEE_TOTAL_COST) return Reject.FEE_CAP;
+        if (c.maxCost > e.feeCapTotal) return Reject.FEE_CAP;
 
         // First-use state budget: the VERIFY frame must fund the new-key charge.
-        if (e.keyIsNew && vf.stateLimit < e.firstUseStateCost) return Reject.STATE_BUDGET;
+        if (e.keyIsNew && c.verifyStateLimit < e.firstUseStateCost) return Reject.STATE_BUDGET;
 
         return Reject.OK;
-    }
-
-    function _decodeTwo(bytes memory data) private pure returns (uint256 a, uint256 b) {
-        assembly {
-            a := mload(add(data, 36)) // 32 len + 4 selector
-            b := mload(add(data, 68))
-        }
     }
 }

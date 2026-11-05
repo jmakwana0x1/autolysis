@@ -128,7 +128,7 @@ export const probes: Probe[] = [
     // 4 (devnet facts probe #4): the VERIFY frame's gas must fit MAX_VERIFY_GAS. Read frames[0].gasUsed
     // from a real simulate of the ACCOUNT's verifyLiquidation() and require it <= 100,000 minus the
     // signature cost (ARBITRARY = 100), i.e. <= 99,900. This is the authoritative number the local
-    // MockFrameEnv measurement (~98.6k storage-only; ~131k staked) only approximates. See docs/DEVNET.md.
+    // MockFrameEnv measurement (A1: ~49.3k storage-only; ~70.7k outside reads) only approximates. See docs/DEVNET.md.
     id: 4,
     name: "verify gas fits MAX_VERIFY_GAS",
     confirms: ["verifyGas"],

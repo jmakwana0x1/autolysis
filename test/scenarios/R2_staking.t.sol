@@ -16,6 +16,7 @@ import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockCurve} from "../mocks/MockCurve.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
+import {VerifyGas} from "../mocks/VerifyGas.sol";
 import {MockStakingRegistry} from "../mocks/MockStakingRegistry.sol";
 
 /// R2: the account stakes itself in the real registry interface, and VERIFY fits the staked gas limit.
@@ -97,11 +98,18 @@ contract R2StakingTest is Test {
         );
         env.set(v);
 
+        address[] memory o = new address[](5);
+        o[0] = address(market);
+        o[1] = address(feed);
+        o[2] = address(col);
+        o[3] = address(usdc);
+        o[4] = address(registry);
+        VerifyGas.coolAll(address(env), address(account), o);
         vm.prank(address(account));
         uint256 g0 = gasleft();
         account.verifyLiquidation();
         uint256 used = g0 - gasleft();
-        emit log_named_uint("verifyLiquidation gas", used);
+        emit log_named_uint("MOCK outside-reads VERIFY gas, LOWER BOUND (helpers etched in-tx stay warm; record: A1_verify_gas)", used);
         assertLt(used, STAKED_VALIDATION_GAS, "VERIFY must fit the staked validation-gas limit");
     }
 }

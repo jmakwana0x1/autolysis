@@ -15,6 +15,7 @@ import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockCurve} from "../mocks/MockCurve.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
+import {VerifyGas} from "../mocks/VerifyGas.sol";
 
 /// W1.5: the storage-only VERIFY fallback. With `storageOnlyVerify` on, VERIFY takes the round/health
 /// gate from a snapshot in the account's OWN storage (pushed in a prior non-VERIFY tx) instead of
@@ -123,11 +124,17 @@ contract W1StorageOnlyVerifyTest is Test {
         account.pushVerifySnapshot(posId, roundId);
         env.resetApprovals(address(account));
         env.set(_tx(roundId, env.sequenceOf(FirewallRules.nonceKey(address(market), posId))));
+        address[] memory o = new address[](4);
+        o[0] = address(market);
+        o[1] = address(feed);
+        o[2] = address(col);
+        o[3] = address(usdc);
+        VerifyGas.coolAll(address(env), address(account), o);
         vm.prank(address(account));
         uint256 g0 = gasleft();
         account.verifyLiquidation();
         uint256 used = g0 - gasleft();
-        emit log_named_uint("storage-only verifyLiquidation gas (MockFrameEnv)", used);
+        emit log_named_uint("MOCK storage-only VERIFY gas, LOWER BOUND (helpers etched in-tx stay warm; record: A1_verify_gas)", used);
         assertLe(used, VERIFY_EXEC_LIMIT_CAP, "storage-only VERIFY must admit a limit <= 99,900");
     }
 

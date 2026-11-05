@@ -34,6 +34,39 @@ struct FrameView {
     bytes data;
 }
 
+/// @notice The FIXED-size slice of a frame transaction that VERIFY actually checks (A1, PLAN-v4.4).
+/// @dev Read by `IFrameEnv.loadCanonical()` with ~14 frame-opcode reads and no dynamic ABI encoding.
+///      Fields that the firewall no longer reads, and why that is safe:
+///      - sender, frame 0 target: APPROVE(EXECUTION[_AND_PAYMENT]) requires the executing address to be
+///        the frame's resolved target and that target to be tx.sender (EIP-8141 §APPROVE, as cited in
+///        lib/mempool-workshop-sidecar/docs/plans/2026-09-02-erc7562-native-aa-mempool-spec.md:66), so a
+///        successful APPROVE from this account already implies both equal the account.
+///      - frame 0 selector: the account has no other entry that reaches APPROVE.
+///      - frame 0 mode, current frame index: with exactly 2 frames and frame 1 in SENDER mode, the
+///        approving frame is frame 0. That APPROVE is VERIFY-only is NOT confirmed in vendored source;
+///        probe it on the devnet (B3) before relying on it.
+///      - frame gas limits: the fee cap uses MAX_COST in the total-cost format (probe #2, FEE_FORMAT=0).
+///      When frameCount != 2 the frame fields are left zero (the rules reject on FRAME_COUNT first);
+///      when exec data length != 68 the words are left zero (rejected on EXEC_CALLDATA_LEN).
+struct CanonicalView {
+    uint256 frameCount; // TXPARAM FRAME_COUNT
+    uint256 verifyAllowedScope; // FRAMEPARAM(0, ALLOWED_SCOPE)
+    uint256 verifyStateLimit; // FRAMEPARAM(0, STATE_GAS_LIMIT)
+    uint256 execMode; // FRAMEPARAM(1, MODE)
+    address execTarget; // FRAMEPARAM(1, RESOLVED_TARGET)
+    uint256 execValue; // FRAMEPARAM(1, VALUE)
+    uint256 execDataLength; // FRAMEPARAM(1, DATA_LENGTH)
+    bytes32 execWord0; // FRAMEDATALOAD(0, 1): selector ++ positionId[0:28]
+    bytes32 execWord1; // FRAMEDATALOAD(32, 1): positionId[28:32] ++ roundId[0:28]
+    bytes32 execWord2; // FRAMEDATALOAD(64, 1): roundId[28:32] ++ padding
+    uint256 nonceKeyCount; // TXPARAM NONCE_KEY_COUNT
+    uint256 nonceKey0; // TXPARAM NONCE_KEY_0 (0 when there is no key)
+    uint256 sequence; // TXPARAM NONCE (the keyed nonce value)
+    uint256 maxCost; // TXPARAM MAX_COST
+}
+
+/// @notice Full view of a frame transaction. No longer read on chain; kept as the authoring format for
+///         tests (MockFrameEnv derives the CanonicalView from it) and off-chain tooling.
 struct TxView {
     address sender;
     uint256[] nonceKeys;

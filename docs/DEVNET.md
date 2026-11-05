@@ -68,19 +68,25 @@ check; the account's logic decides), `1` SECP256K1, `2` P256.
 So, with one ARBITRARY signature (100 gas), the VERIFY frame's `limits.execution` must be ≤ **99,900**, and
 that limit must still cover the frame's actual gas.
 
-Measured here (`FOUNDRY_PROFILE` default, MockFrameEnv):
+Measured here — **mock only** (`test/scenarios/A1_verify_gas.t.sol`, after A1 slim VERIFY):
 
-| VERIFY path | gas | admissible limit ≤ 99,900? |
-| --- | --- | --- |
-| staked reads (3 market/feed CALLs) — `test/scenarios/R2_staking.t.sol` | **131,589** | **no** — inadmissible |
-| storage-only snapshot (W1.5) — `test/scenarios/W1_storage_only_verify.t.sol` | **98,581** | yes (thin ~1.3k margin) |
+| VERIFY path | pre-A1 mock | A1 mock (cold) | admissible limit ≤ 99,900? (mock) |
+| --- | --- | --- | --- |
+| outside reads (3 market/feed CALLs) | 131,589 | **70,728** | yes (~29k margin) |
+| storage-only snapshot (W1.5) | 98,581 | **49,321** | yes (~50k margin) |
 
-**Conclusion:** the storage-only VERIFY path (`AutolysisAccount.storageOnlyVerify`) is the one that ships on
-this devnet. The staked-read path stays for a full ERC-8421 node that honors the 1M allowance. The
-authoritative number per demo is `frames[0].gasUsed` from `ethrex_simulateFrameTransaction`, since real
-frame-opcode costs differ from the mock. If the real number exceeds 99,900, slim VERIFY in this order:
-1. read only the frame params actually checked, not the whole `env.load()`;
-2. cache helper addresses as immutables;
+What changed in A1: `IFrameEnv.loadCanonical()` returns a fixed-size `CanonicalView` (14 opcode reads, no
+dynamic ABI decoding) instead of the whole `TxView`; the `Approved` event is gone; `MockFrameEnv` answers
+each read with one STATICCALL to a per-opcode helper whose answers are constants in its code (the pre-A1
+mock paid one SLOAD per field plus ~45k of mock-only SSTORE bookkeeping inside APPROVE). The A1 method
+(`test/mocks/VerifyGas.sol`) starts every contract, slot and helper cold except the account address.
+The two columns are different methods, so the drop is partly real slimming and partly a fairer mock.
+
+**Decision is A5's, on devnet numbers.** The mock now admits both paths, but real helper and opcode
+costs differ; the authoritative number per demo is `frames[0].gasUsed` from
+`ethrex_simulateFrameTransaction`. If the real number exceeds 99,900, slim further in this order:
+1. ~~read only the frame params actually checked, not the whole `env.load()`~~ (done in A1);
+2. cache helper addresses as immutables / call the helpers from the account directly (saves the env hop);
 3. keep only shape, key, unhealthy-at-cited-round, fee cap, scope — leave the rest to
    `executeLiquidation`'s recheck;
 4. last resort: the community solc fork (`chiranjeev13/solidity` v0.8.38-eip8141.0, inline opcodes).
