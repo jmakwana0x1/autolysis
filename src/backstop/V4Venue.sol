@@ -61,10 +61,19 @@ contract V4Venue is ISwapVenue, IUnlockCallback {
         }
     }
 
-    function setRoundPrice(uint256 price) external {
+    /// @notice The cited-round price under the `IPriceSource.price()` selector the SwapVM
+    ///         LiquidationPricer reads (aqua-fork/src/LiquidationPricer.sol): debt per 1e18 collateral,
+    ///         WAD. Transient, so it is 0 outside a liquidation and the pricer reverts ZeroPrice.
+    function price() external view returns (uint256 p) {
+        assembly {
+            p := tload(PRICE_SLOT)
+        }
+    }
+
+    function setRoundPrice(uint256 roundPrice) external {
         if (msg.sender != market) revert NotMarket();
         assembly {
-            tstore(PRICE_SLOT, price)
+            tstore(PRICE_SLOT, roundPrice)
         }
     }
 

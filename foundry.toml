@@ -21,6 +21,7 @@ isolate = false
 fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read-write", path = "./test/vectors" },
+  { access = "read", path = "./out-aqua" },
 ]
 remappings = [
   "forge-std/=lib/forge-std/src/",
@@ -68,6 +69,9 @@ lint_on_build = false
 # Isolated SwapVM/Aqua fork build (solc 0.8.30, OZ 5.6.1). Its own remappings (profile remappings
 # replace, not merge) avoid the main project's bundled-OZ clash. Run: FOUNDRY_PROFILE=aqua forge build
 [profile.aqua]
+# Own artifacts dir: the main-profile tests deploy these 0.8.30 contracts with vm.deployCode (C1), and a
+# shared out/ would let either build clean the other's artifacts.
+out = "out-aqua"
 via_ir = true
 src = "aqua-fork/src"
 test = "aqua-fork/test"

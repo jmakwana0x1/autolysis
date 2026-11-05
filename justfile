@@ -17,8 +17,12 @@ gen:
 build:
     forge build
 
+# Build the 0.8.30 SwapVM/Aqua fork into out-aqua/ (the main suite deploys it via vm.deployCode)
+aqua-build:
+    FOUNDRY_PROFILE=aqua forge build
+
 # Layer 1: unit + fuzz (10,000 runs per property), every commit
-test:
+test: aqua-build
     forge test --no-match-path "test/invariant/*"
 
 # Layer 2: integration + stateful invariants (depth 200, 1,000 runs)

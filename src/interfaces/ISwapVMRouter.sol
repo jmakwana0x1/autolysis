@@ -18,6 +18,9 @@ interface ISwapVMRouter {
         bytes data;
     }
 
+    /// @notice The order hash Aqua keys the maker's balances on (upstream ISwapVM.hash, view).
+    function hash(Order calldata order) external view returns (bytes32);
+
     /// @notice Fill a shipped order. Reverts (LiquidationGateClosed) unless msg.sender is the gate hook
     ///         and the venue reports an active liquidation.
     function swap(Order calldata order, uint256 amount, bytes calldata takerTraitsAndData)

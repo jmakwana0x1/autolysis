@@ -20,6 +20,11 @@ RPC to those hosts); every status below is `local test` / `written, not run` unt
 | ethrex root (simulate, receipts, `debug_*`) | `https://altmempool.forshtat.com` |
 | Explorer | `https://explorer.altmempool.wtf/` |
 
+Checked Nov 5 (laptop): `gateway{1,2,3}.altmempool.wtf` and `devnet{1,2,3}.altmempool.wtf` are **not**
+nodes. `*.altmempool.wtf` is wildcard DNS to Vercel: HTTPS fails the TLS handshake and HTTP answers
+`404 X-Vercel-Error: DEPLOYMENT_NOT_FOUND`, exactly like a made-up subdomain. Only the forshtat.com
+endpoints above serve chain 1337. The gateway faucet there answered `The faucet is empty` (Nov 5, 19:14 UTC).
+
 ## Sending and probing
 
 - **Alt mempool:** `eth_sendFrameTransaction([toWire(tx)])` → gateway.
