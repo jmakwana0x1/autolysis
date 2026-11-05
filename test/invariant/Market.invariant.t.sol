@@ -110,6 +110,20 @@ contract MarketInvariantTest is Test {
         assertEq(market.totalFeeBilled(), address(account).balance, "fees billed != account ETH in");
     }
 
+    /// No dangling debt (H3): a position with no collateral has no debt (bad debt was written off).
+    function invariant_noDanglingDebt() public view {
+        uint256 n = handler.posCount();
+        for (uint256 i; i < n; ++i) {
+            (, uint256 c, uint256 d,) = market.positions(handler.posAt(i));
+            if (c == 0) assertEq(d, 0, "debt left against zero collateral");
+        }
+    }
+
+    /// The market can always pay out the surplus it credited to borrowers (H3).
+    function invariant_usdcCoversWithdrawable() public view {
+        assertGe(usdc.balanceOf(address(market)), market.totalWithdrawable(), "USDC cannot cover surplus");
+    }
+
     function afterInvariant() public {
         // Coverage sanity: over a full run the handler must drive at least one successful account
         // liquidation and exercise the stranger-liquidation path (which must always revert).

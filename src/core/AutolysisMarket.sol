@@ -36,6 +36,9 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     uint256 public constant FEE_CAP_BPS = 30; // gas fee cap: 0.3% of the collateral sold
     uint256 public maxFailedGasBill = 0.02e18; // MAX_FAILED_GAS_BILL (wei of WETH collateral)
     uint256 public totalFeeBilled; // lifetime collateral taken as gas fees (ETH sent to the account)
+    uint256 public badDebt; // debt written off against depositors (sale could not cover it)
+    uint256 public totalWithdrawable; // USDC owed back to borrowers as liquidation surplus
+    mapping(address => uint256) public withdrawableOf;
 
     uint256 public liqThreshold = 0.8e18; // L (WAD)
     uint256 public targetHf = 1.05e18; // T (WAD)
@@ -65,6 +68,8 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     event Deposited(uint256 indexed id, uint256 amount);
     event Withdrawn(uint256 indexed id, uint256 amount);
     event Liquidated(uint256 indexed id, uint256 roundId, uint256 debtRepaid, uint256 collateralSold, uint256 fee);
+    event BadDebt(uint256 indexed id, uint256 amount);
+    event SurplusWithdrawn(address indexed who, uint256 amount);
 
     constructor(IERC20 collateral_, IERC20 debt_, IRoundFeed feed_, address account_) {
         collateralToken = collateral_;
@@ -168,8 +173,8 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         collateralToken.transfer(address(venue), step.collateralToSell);
         uint256 got = venue.sellCollateral(step.collateralToSell, minOut);
 
-        // Apply results. Debt actually cleared is capped by proceeds.
-        uint256 cleared = got >= step.debtToRepay ? step.debtToRepay : got;
+        // Apply results. All proceeds go to the debt first, up to what is owed (H3).
+        uint256 cleared = got < pos.debt ? got : pos.debt;
         pos.collateral -= step.collateralToSell;
         pos.debt -= cleared;
         totalCollateral -= step.collateralToSell;
@@ -177,6 +182,22 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         totalSoldOut += step.collateralToSell;
         pos.liquidations += 1;
         if (roundId > lastLiquidatedRound[positionId]) lastLiquidatedRound[positionId] = roundId;
+
+        // Surplus proceeds above the debt belong to the borrower, credited to a withdrawable balance (H3).
+        uint256 surplus = got - cleared;
+        if (surplus > 0) {
+            withdrawableOf[pos.owner] += surplus;
+            totalWithdrawable += surplus;
+        }
+
+        // Bad debt (H3): if the step sold the whole position but the proceeds could not cover the debt,
+        // write the shortfall off against depositors and clear it from the position.
+        if (step.insolvent && pos.collateral == 0 && pos.debt > 0) {
+            badDebt += pos.debt;
+            totalDebt -= pos.debt;
+            emit BadDebt(positionId, pos.debt);
+            pos.debt = 0;
+        }
 
         // Bill the gas fee in collateral (WETH), capped at MAX_COST and FEE_CAP_BPS of the sale, unwrap
         // it and send the ETH to the self-paying account. No separate USDC tank (H2).
@@ -193,6 +214,15 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     function billFailedAttempt(uint256 positionId, uint256 cap) external {
         if (msg.sender != account) revert NotAccount();
         _billFeeFromCollateral(positionId, _min(cap, maxFailedGasBill));
+    }
+
+    /// @notice Withdraw liquidation surplus credited to the caller.
+    function withdrawSurplus(uint256 amount) external {
+        uint256 bal = withdrawableOf[msg.sender];
+        if (amount > bal) amount = bal;
+        withdrawableOf[msg.sender] = bal - amount;
+        totalWithdrawable -= amount;
+        debtToken.transfer(msg.sender, amount);
     }
 
     /// @dev Take `want` WETH collateral from the position (never more than it holds), unwrap it, and send
