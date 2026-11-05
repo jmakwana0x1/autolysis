@@ -21,7 +21,7 @@ export type FrameTx = {
   chainId: number;
   sender: Address;
   nonceKeys: bigint[];
-  sequence: bigint;
+  sequence: bigint; // the key's current on-chain nonce (read from the devnet), NOT the liquidation count (C2)
   maxPriorityFeePerGas: bigint;
   maxFeePerGas: bigint;
   expiry: bigint;

@@ -29,7 +29,6 @@ library FirewallRules {
         KEY_COUNT,
         KEY_VALUE,
         KEY_TOP_BYTE,
-        SEQUENCE,
         SECOND_KEY,
         FEE_CAP,
         STATE_BUDGET,
@@ -42,7 +41,6 @@ library FirewallRules {
         address market;
         uint256 positionId;
         uint256 roundId;
-        uint256 expectedSequence; // = liquidation count for this key
         uint256 feeCapTotal; // max total cost (debt units of the devnet gas token), per fee format
         uint256 firstUseStateCost; // ProbeConstants.FIRST_USE_KEY_STATE_GAS when the key is new
         bool keyIsNew; // first use of this nonce key
@@ -87,8 +85,9 @@ library FirewallRules {
         if (v.nonceKeys[0] != expectedKey) return Reject.KEY_VALUE;
         if (v.nonceKeys[0] >> 248 != 0) return Reject.KEY_TOP_BYTE;
 
-        // Sequence == liquidation count (first-use-aware state budget below).
-        if (v.sequence != e.expectedSequence) return Reject.SEQUENCE;
+        // The keyed nonce order is enforced by the protocol (EIP-8250), not by the firewall: a failed
+        // attempt burns the nonce without advancing the liquidation count, so the firewall must not tie
+        // the submitted sequence to that count (C2). `keyIsNew` is derived from the sequence itself.
 
         // Fee cap, in the probed fee format.
         uint256 totalGas = vf.gasLimit + xf.gasLimit;

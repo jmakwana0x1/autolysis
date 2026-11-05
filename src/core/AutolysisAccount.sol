@@ -61,10 +61,9 @@ contract AutolysisAccount {
         e.market = address(market);
         e.positionId = positionId;
         e.roundId = roundId;
-        e.expectedSequence = market.liquidationCount(positionId);
         e.feeCapTotal = feeCapTotal;
         e.firstUseStateCost = ProbeConstants.FIRST_USE_KEY_STATE_GAS;
-        e.keyIsNew = market.liquidationCount(positionId) == 0;
+        e.keyIsNew = v.sequence == 0; // first use of the key is sequence 0, not count 0 (C2)
         e.nowTimestamp = block.timestamp;
 
         FirewallRules.Reject r = FirewallRules.check(v, e);

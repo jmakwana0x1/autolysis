@@ -22,7 +22,6 @@ contract FirewallRulesTest is Test {
         e.market = MARKET;
         e.positionId = POS;
         e.roundId = ROUND;
-        e.expectedSequence = SEQ;
         e.feeCapTotal = 1_000_000 gwei;
         e.firstUseStateCost = ProbeConstants.FIRST_USE_KEY_STATE_GAS;
         e.keyIsNew = true;
@@ -155,12 +154,6 @@ contract FirewallRulesTest is Test {
         _rejects(v);
     }
 
-    function test_mut_sequence(uint256 x) public pure {
-        vm.assume(x != SEQ);
-        TxView memory v = _canonical();
-        v.sequence = x;
-        _rejects(v);
-    }
 
     function test_mut_keyValue(uint256 x) public pure {
         uint256 good = FirewallRules.nonceKey(MARKET, POS);
