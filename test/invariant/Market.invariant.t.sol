@@ -46,7 +46,7 @@ contract MarketInvariantTest is Test {
         feed.transferUpdater(address(handler)); // handler drives price updates
         targetContract(address(handler));
 
-        bytes4[] memory sel = new bytes4[](8);
+        bytes4[] memory sel = new bytes4[](9);
         sel[0] = handler.openAndFund.selector;
         sel[1] = handler.deposit.selector;
         sel[2] = handler.repay.selector;
@@ -55,6 +55,7 @@ contract MarketInvariantTest is Test {
         sel[5] = handler.liquidateViaAccount.selector;
         sel[6] = handler.strangerLiquidates.selector;
         sel[7] = handler.crashAndLiquidate.selector;
+        sel[8] = handler.strangerExecutes.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: sel}));
     }
 
@@ -88,6 +89,12 @@ contract MarketInvariantTest is Test {
     }
 
     uint256 internal lastSoldOut;
+
+    /// C1: a stranger calling execute() never bills the tank.
+    function invariant_strangerExecuteNeverBills() public view {
+        assertEq(handler.strangerExecuteBilled(), 0, "stranger execute billed the tank");
+    }
+
 
     /// Collateral only ever leaves a position through an accounted liquidation sale, so the market's
     /// sold-out total is monotonic non-decreasing. A stranger-driven sale would be unaccounted; the

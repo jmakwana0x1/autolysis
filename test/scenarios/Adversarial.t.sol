@@ -186,8 +186,8 @@ contract AdversarialTest is Test {
             env.resetApprovals(address(account));
             vm.prank(address(account));
             try account.verify() {
-                vm.prank(address(account));
                 uint256 before = market.liquidationCount(posId);
+                vm.prank(address(account));
                 account.execute(posId, roundId);
                 if (market.liquidationCount(posId) > before) {
                     steps++;

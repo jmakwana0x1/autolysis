@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {AutolysisMarket} from "../../src/core/AutolysisMarket.sol";
+import {TankLedger} from "../../src/libraries/TankLedger.sol";
 import {AutolysisAccount} from "../../src/core/AutolysisAccount.sol";
 import {RoundFeed} from "../../src/core/RoundFeed.sol";
 import {FirewallRules} from "../../src/libraries/FirewallRules.sol";
@@ -31,6 +32,7 @@ contract MarketHandler is Test {
     uint256 public successfulSteps;
     uint256 public sawUnhealthy;
     uint256 public verifyReverted;
+    uint256 public strangerExecuteBilled; // must stay 0 (C1)
 
     address constant ALICE = address(0xA11CE);
     address constant STRANGER = address(0x5748);
@@ -127,8 +129,8 @@ contract MarketHandler is Test {
         env.resetApprovals(address(account));
         vm.prank(address(account));
         try account.verify() {
-            vm.prank(address(account));
             uint256 before = market.liquidationCount(id);
+            vm.prank(address(account));
             account.execute(id, roundId);
             if (market.liquidationCount(id) > before) successfulSteps++;
         } catch {
@@ -167,6 +169,16 @@ contract MarketHandler is Test {
         } catch {
             verifyReverted++;
         }
+    }
+
+    /// A stranger must never be able to call the account's execute() and bill the tank (C1).
+    function strangerExecutes(uint256 seed, uint256 roundId) public {
+        uint256 id = _pos(seed);
+        if (id == 0) return;
+        TankLedger.Tank memory before = market.tank(id);
+        try account.execute(id, roundId) {} catch {}
+        TankLedger.Tank memory afterT = market.tank(id);
+        if (afterT.billed > before.billed) strangerExecuteBilled += 1;
     }
 
     /// A stranger must never be able to liquidate directly.

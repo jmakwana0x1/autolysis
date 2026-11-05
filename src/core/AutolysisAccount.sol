@@ -84,6 +84,9 @@ contract AutolysisAccount {
     /// @notice SENDER frame entry point: the never-revert envelope. Runs one gradual liquidation step;
     ///         on any failure it bills the failed-attempt cap and returns cleanly.
     function execute(uint256 positionId, uint256 roundId) external {
+        // In a SENDER frame the caller is tx.sender, which is this account itself. Nothing else may
+        // call execute, or a stranger could loop failing attempts and bill the borrower's tank (C1).
+        if (msg.sender != address(this)) revert NotSelf();
         // Reservation guards the tank; if it can't back an attempt, do nothing (no revert, no bill).
         if (market.tankHeadroom(positionId, failedAttemptCap) == 0) return;
         market.reserveAttempt(positionId);
