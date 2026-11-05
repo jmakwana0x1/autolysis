@@ -1,50 +1,49 @@
 # Status
 
-| Phase | State | Notes |
+Autolysis v4 — what is proven where. Nothing is proven on a live devnet yet (none is available in this
+build), so the honest split is **proven by local suite** vs **needs a devnet**.
+
+## Proven by local suite (Foundry + v4-core/SwapVM + kit vitest)
+
+| Area | Where | Suite |
 | --- | --- | --- |
-| 0. Probe and scaffold | Scaffold done; probes unpinned | Probe suite written; not run against a devnet (none in this build env). `deployments/probes.json` holds the plan's assumptions with `pinned: false`. Sidecar `alt_*` RPC names in probes 2–8 are placeholders to confirm against the real sidecar. |
-| 1. Core engine | Local suites green | LiquidationMath, FirewallRules, RoundFeed, TankLedger, AutolysisMarket, AutolysisAccount (never-revert envelope), MockFrameEnv/MockCurve. Unit + fuzz (10k) + differential (kit vs Solidity) + stateful invariants (1000 runs × depth 200, 200k calls) all green. First self-paid liquidation proven locally through the plain curve via the canonical VERIFY→SENDER frame tx. **Devnet inclusion still pending** (needs RPC). |
+| Liquidation math (close factor, HF, slippage step, insolvency) | `src/libraries/LiquidationMath.sol` | `test/fuzz/LiquidationMath.t.sol`, `test/fuzz/Differential.t.sol` (kit↔Solidity) |
+| Firewall: one tx shape per (position, step), ALLOWED_SCOPE rule | `src/libraries/FirewallRules.sol` | `test/fuzz/FirewallRules.t.sol` (mutation fuzzer) |
+| Round feed: band + two-round breaker + VERIFY window | `src/core/RoundFeed.sol` | `test/unit/RoundFeed.t.sol`, `test/scenarios/H1_verify_round.t.sol` |
+| Account: caller guard, VERIFY round/health gate, never-revert envelope via `maxCost()` | `src/core/AutolysisAccount.sol` | `test/scenarios/{C1,C2,H1,N5_N6}.t.sol`, `test/integration/Liquidation.t.sol` |
+| Market: gas billed in collateral/ETH, surplus + bad-debt, one attempt per round, conservation | `src/core/AutolysisMarket.sol` | `test/scenarios/{C6_haircut,H3_surplus_baddebt,N5_N6}.t.sol`, `test/invariant/Market.invariant.t.sol` (11 invariants @ 1000×200) |
+| v4 BackstopHook: authorize on sender+flag, waterfall, makers/house paid real tokens, deltas net to zero | `src/backstop/{BackstopHook,V4Venue}.sol` | `test/backstop/BackstopHook.t.sol`, `test/integration/V4Liquidation.t.sol` |
+| Aqua model router (gate, oracle pricing quote==fill, template allowlist, stipends, skip rules) | `src/aqua/*` | `test/aqua/AquaRouter.t.sol`, `test/invariant/RouterInvariant.t.sol` |
+| Real SwapVM/Aqua fork compiles; LiquidationGate opcode (hook+active passes, else reverts) | `aqua-fork/src/AutolysisAquaRouterGated.sol` | `just aqua` (`FOUNDRY_PROFILE=aqua forge test`) |
+| Frame tx built with the real hegota-support encoder (round-trips); replacement carrier; EXO-010 sim | `kit/src/*` | `kit` vitest (frametx round-trip, carrier, probes-with-mock, exo010) |
 
-| 2. Mempool behavior | Local suites green | Replacement carrier (tank-aware concurrency, 10% fee-bump keyed replacement), attack builders, and the adversarial scenarios as Foundry mock tests: rescue invalidates a pending liquidation, gradual three-step sale (HF never falls), key-append / fake-round / fee-griefing rejected, failed-attempt billing within the cap. Carrier + attack builders covered by vitest. Devnet scenes stubbed (need RPC); each names its matching local test. |
+## Needs a devnet (code written to the real interfaces; not run here)
 
-| 3. Uniswap backstop | Local suites green | `BackstopHook` (v4-core, return-delta on beforeSwap): registered-market liquidations fill 1:1 from the deposits tier, outside swappers and unregistered markets follow the vanilla path matching a no-hook pool to the wei, settle-before-swap (enforced by the unlock), reentrancy guard. Tests cover both currency orderings, pool-manipulation-harmless, and a 10k-run deltas-net-to-zero fuzz. `BaseHook` + CREATE2 salt-mining deploy script. FEEDBACK.md written. |
+| Item | State |
+| --- | --- |
+| First self-paid liquidation included on chain 1337 | pending RPC |
+| Probes run on the sidecar (`eth_sendFrameTransaction` / `ethrex_simulateFrameTransaction`) | code ready (`kit/src/probes`); pins only fields a real probe confirms this run, never assumptions |
+| Account staking (ERC-8421 STORAGE-032) so VERIFY may read the market/feed | `IAccountStaking` + deploy step documented; probe 3 confirms on chain |
+| `deployments/1337.json` addresses + explorer links | filled by deploy scripts on a devnet |
+| Live app pages (Borrow/Backstop/Rescue); Lab EXO-010 chart is already published | pending RPC |
 
-| 4. Aqua tier | Local suites green | `AutolysisAquaRouter` (our SwapVM redeploy) with a LiquidationGate (fills only when the caller is the hook and the gate is open), oracle pricing (price − base spread + vol add-on; quote() equals the fill), an EIP-1167 clone template allowlist (one code hash covers every maker), maker strategies pulling USDC straight from wallets under a gas stipend, and skip rules for empty / rugged / gas-bomb makers. `BackstopHook` gains the three-tier waterfall (makers → deposits → vanilla curve) with correct oracle-priced v4 deltas. Tests: 8 router unit tests (gate, allowlist, wallet pull, rug/gas-bomb/empty skip, quote==fill), 9 hook tests (waterfall order, tier-2-untouched-when-makers-cover, both currency orders, oracle pricing, pool-manipulation-harmless, 10k deltas-net-to-zero fuzz), and gated router invariants (stranger never moves funds, USDC conserved, gate closed at rest). `SwapVM`/`Aqua` are modeled in `src/aqua`, not vendored. |
+## Open (from the second review)
 
-| 5. Product and research | Simulator + Lab chart done; app pages need devnet | EXO-010 reputation simulator (`kit/src/sim/exo010.ts`): replays crash/bounce traces through the baseline vs. proposed ERC-8421 rules, reproducible, vitest-covered; it produces the with/without chart (published Lab page `app/lab-exo010.html`, regenerated by `just sim`). `ISelfLiquidatingMarket` interface and a `SecondCollateralAdapter` skeleton behind `ICollateralAdapter` compile. Borrow / Backstop / Rescue app pages are specified and wired through the kit but need a devnet for live numbers; `just e2e` is the devnet demo. |
+- **Full 1inch Aqua integration (N3 remainder):** makers ship their strategy into Aqua with the
+  LiquidationGate as the first instruction, the hook acts as taker, and an order-hash template check
+  replaces the clone allowlist; then run SwapVM's own suite with the opcode. The fork compiles and the
+  gate is verified; the wiring crosses the 0.8.30/0.8.26 boundary (a deployment concern). See
+  `docs/DESIGN.md`.
+- Everything else from the first and second reviews (C1–C6, H1–H5, M1–M3, N1, N2, N4–N9) is addressed and
+  covered by the local suites above.
 
-| 6. Submission | Docs complete; devnet items open | README (guarantee→source→test map, commands, submission checklist), DESIGN.md (decisions + the HF/rounding trade-off), FEEDBACK.md (Uniswap v4), AI_USAGE.md. Open items all require a devnet: first self-paid liquidation included on-chain, explorer links in `deployments/1337.json`, live app pages, demo video. |
-
-## Running the suites
+## Commands
 
 ```bash
-just test         # unit + fuzz + differential (every commit)
-just invariants   # stateful market invariants (~3 min at default depth)
-FOUNDRY_PROFILE=quick forge test   # fast local loop
-cd kit && npx vitest run           # kit unit tests
-cd kit && VECTORS=50000 npx tsx scripts/gen-vectors.mjs   # regenerate full differential vectors
+just test         # unit + fuzz + differential + integration + backstop + aqua model (every commit)
+just invariants   # stateful invariants (~3 min at default depth)
+just aqua         # the real SwapVM/Aqua fork build + LiquidationGate test (solc 0.8.30)
+just sim          # EXO-010 simulator -> Lab chart data
+just probe        # devnet probes (needs RPC_URL + ACCOUNT); then `just gen`
+cd kit && npx vitest run    # kit unit tests
 ```
-
-## Review fixes (Nov 4, second pass)
-
-Worked in the reviewer's order; each item test-first.
-
-| Item | What changed | Verified |
-| --- | --- | --- |
-| C1 | `selfLiquidate` rejects non-self callers | local |
-| C2 | removed the sequence==count freeze; mock models nonce burn | local |
-| C6+H5 | slippage `s` in the step; real constants; insolvency branch | local |
-| C5 | vendored real `hegota-support`; env inherits `HegotaSupport` (owns no opcode bytes); real ids/scopes; dropped TIMESTAMP/expiry; ALLOWED_SCOPE rule | local (enum-matched) |
-| H1 | VERIFY validates the round + both-price health | local |
-| C3+C4+H4 | `V4Venue` drives the pool; hook authorizes on sender+flag; makers/house paid in-fill; market sells through the backstop | local (real v4) |
-| H2 | gas billed in collateral/ETH; USDC tank deleted | local |
-| H3 | surplus to borrower; bad-debt write-off | local |
-| M1 | renamed to `verifyLiquidation` / `selfLiquidate` | local |
-| M2 | hook + router price at the cited round | local |
-| M3 | real ERC-8421 reputation rules in the simulator | local |
-| M4 | probes rewritten to `eth_sendFrameTransaction` / `ethrex_simulateFrameTransaction` / `explainRejection` | **devnet-only (not run here)** |
-| M5 | SwapVM vendored for reference; fork plan + license documented | **Hardhat/devnet-only (not built here)** |
-
-Local suites: `just test` (Foundry unit/fuzz/differential/integration/backstop/aqua + scenarios), the
-stateful invariants, and the kit vitest are all green. M4/M5 need a live devnet and SwapVM's Hardhat
-toolchain to execute.
