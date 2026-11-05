@@ -39,8 +39,8 @@ contract AutolysisAquaRouter {
     mapping(bytes32 => bool) public allowedTemplate;
     Maker[] public makers;
 
-    // LiquidationGate: set only by the hook for the duration of one fill.
-    bool public gateOpen;
+    // LiquidationGate: set only by the hook for the duration of one fill (transient storage).
+    uint256 private constant GATE_SLOT = 0xa07a0a7e; // transient slot for the liquidation gate
 
     error NotOwner();
     error NotHook();
@@ -117,46 +117,94 @@ contract AutolysisAquaRouter {
         }
     }
 
+    /// @notice A maker's share of a fill: the collateral to deliver to the maker's wallet.
+    struct Payout {
+        address recipient;
+        uint256 collateral;
+    }
+
     /// @notice Fill up to `collateralIn` collateral from makers, raising USDC to `to`. Gated: only the
-    ///         hook may call, and only while the gate is open. Returns USDC raised and collateral used.
-    function fill(uint256 collateralIn, address to) external returns (uint256 usdcOut, uint256 collateralUsed) {
+    ///         hook may call, and only while the gate is open (transient). Returns USDC raised, collateral
+    ///         used, and the per-maker collateral the hook must pay out of the sold collateral.
+    function fill(uint256 collateralIn, address to)
+        external
+        returns (uint256 usdcOut, uint256 collateralUsed, Payout[] memory payouts)
+    {
         if (msg.sender != hook) revert NotHook();
-        if (!gateOpen) revert GateClosed();
+        if (!_gateOpen()) revert GateClosed();
 
+        uint256 n = makers.length;
+        payouts = new Payout[](n);
+        uint256 filled;
         uint256 remaining = collateralIn;
-        for (uint256 i; i < makers.length && remaining > 0; ++i) {
-            Maker storage m = makers[i];
-            if (!m.active) continue;
-            uint256 eff = _effPrice(m.baseSpreadBps);
-            if (eff == 0) continue;
-
-            // How much this maker could supply (under a gas stipend so a gas-bomb strategy is cut off).
-            uint256 makerUsdc = _availableStipended(m.strategy);
-            if (makerUsdc == 0) continue; // empty / rugged / gas bomb -> skip to next tier
-
-            uint256 makerCollateral = AquaPricing.collateralForUsdc(makerUsdc, eff);
-            uint256 take = makerCollateral < remaining ? makerCollateral : remaining;
-            uint256 want = AquaPricing.usdcForCollateral(take, eff);
-            if (want == 0) continue;
-
-            uint256 moved = _commitStipended(m.strategy, to, want);
-            if (moved == 0) continue; // maker withdrew between quote and fill -> skip
-
-            // Credit the maker the collateral their USDC bought (rounded to what they actually funded).
-            uint256 collForMoved = AquaPricing.collateralForUsdc(moved, eff);
-            if (collForMoved > remaining) collForMoved = remaining;
-            // Collateral is delivered to makers by the hook after the swap settles; here we only account.
+        for (uint256 i; i < n && remaining > 0; ++i) {
+            (uint256 moved, uint256 collForMoved, address recipient) = _fillOne(i, remaining, to);
+            if (moved == 0) continue;
+            payouts[filled++] = Payout({recipient: recipient, collateral: collForMoved});
             usdcOut += moved;
             collateralUsed += collForMoved;
             remaining -= collForMoved;
             emit MakerFilled(i, moved, collForMoved);
         }
+        // Shrink the payouts array to the makers actually filled.
+        assembly {
+            mstore(payouts, filled)
+        }
     }
 
-    /// @notice Open/close the gate. Only the hook toggles it, bracketing one fill.
+    /// @dev One maker's contribution: pull up to `remaining` collateral-worth of USDC to `to`, under the
+    ///      gas stipend and the skip rules. Returns USDC moved, collateral the maker is owed, and the
+    ///      maker's wallet.
+    function _fillOne(uint256 i, uint256 remaining, address to)
+        internal
+        returns (uint256 moved, uint256 collForMoved, address recipient)
+    {
+        Maker storage m = makers[i];
+        if (!m.active) return (0, 0, address(0));
+        uint256 eff = _effPrice(m.baseSpreadBps);
+        if (eff == 0) return (0, 0, address(0));
+
+        uint256 makerUsdc = _availableStipended(m.strategy);
+        if (makerUsdc == 0) return (0, 0, address(0)); // empty / rugged / gas bomb -> skip
+
+        uint256 take = AquaPricing.collateralForUsdc(makerUsdc, eff);
+        if (take > remaining) take = remaining;
+        uint256 want = AquaPricing.usdcForCollateral(take, eff);
+        if (want == 0) return (0, 0, address(0));
+
+        moved = _commitStipended(m.strategy, to, want);
+        if (moved == 0) return (0, 0, address(0)); // withdrew between quote and fill -> skip
+
+        collForMoved = AquaPricing.collateralForUsdc(moved, eff);
+        if (collForMoved > remaining) collForMoved = remaining;
+        recipient = _recipient(m.strategy);
+    }
+
+    /// @notice Open/close the gate. Only the hook toggles it, bracketing one fill; transient so it can
+    ///         never be left open across transactions.
     function setGate(bool open) external {
         if (msg.sender != hook) revert NotHook();
-        gateOpen = open;
+        assembly {
+            tstore(GATE_SLOT, open)
+        }
+    }
+
+    function gateOpen() external view returns (bool) {
+        return _gateOpen();
+    }
+
+    function _gateOpen() internal view returns (bool open) {
+        assembly {
+            open := tload(GATE_SLOT)
+        }
+    }
+
+    function _recipient(IMakerStrategy s) internal view returns (address) {
+        try s.wallet() returns (address w) {
+            return w;
+        } catch {
+            return address(s);
+        }
     }
 
     function _availableStipended(IMakerStrategy s) internal view returns (uint256 amt) {

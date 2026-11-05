@@ -9,6 +9,9 @@ pragma solidity ^0.8.26;
 /// @dev Models the SwapVM program: the router executes it with a capped gas stipend, so a strategy that
 ///      burns gas is cut off and its maker skipped. Templates are allowlisted by code hash.
 interface IMakerStrategy {
+    /// @notice The maker's wallet; collateral bought with the maker's USDC is paid here.
+    function wallet() external view returns (address);
+
     /// @notice Max USDC this maker is willing to provide right now (view; may read the maker wallet).
     function available() external view returns (uint256);
 

@@ -79,7 +79,7 @@ contract AquaRouterTest is Test {
         _openGate();
         uint256 before = usdc.balanceOf(makerA);
         vm.prank(hook);
-        (uint256 usdcOut, uint256 colUsed) = router.fill(10e18, hook); // sell 10 COL
+        (uint256 usdcOut, uint256 colUsed,) = router.fill(10e18, hook); // sell 10 COL
         // 10 COL * 2 USDC = 20 USDC expected (capped by maker funds 1000)
         assertEq(usdcOut, 20e18, "usdc raised");
         assertEq(colUsed, 10e18, "collateral used");
@@ -94,7 +94,7 @@ contract AquaRouterTest is Test {
         (uint256 qUsdc, uint256 qCol) = router.quote(20e18);
         _openGate();
         vm.prank(hook);
-        (uint256 fUsdc, uint256 fCol) = router.fill(20e18, hook);
+        (uint256 fUsdc, uint256 fCol,) = router.fill(20e18, hook);
         assertEq(qUsdc, fUsdc, "quote usdc != fill usdc");
         assertEq(qCol, fCol, "quote collateral != fill collateral");
     }
@@ -107,7 +107,7 @@ contract AquaRouterTest is Test {
         _addMaker(makerB, 1000e18, 1000e18, 0); // maker 1: real funds
         _openGate();
         vm.prank(hook);
-        (uint256 usdcOut,) = router.fill(10e18, hook);
+        (uint256 usdcOut,,) = router.fill(10e18, hook);
         assertEq(usdcOut, 20e18, "next maker should cover after rug");
         assertEq(usdc.balanceOf(hook), 20e18);
     }
@@ -120,7 +120,7 @@ contract AquaRouterTest is Test {
         _addMaker(makerB, 1000e18, 1000e18, 0); // maker 1: real funds
         _openGate();
         vm.prank(hook);
-        (uint256 usdcOut,) = router.fill(10e18, hook);
+        (uint256 usdcOut,,) = router.fill(10e18, hook);
         assertEq(usdcOut, 20e18, "gas bomb should be skipped, next maker covers");
     }
 
@@ -130,7 +130,7 @@ contract AquaRouterTest is Test {
         _addMaker(makerB, 1000e18, 1000e18, 0);
         _openGate();
         vm.prank(hook);
-        (uint256 usdcOut,) = router.fill(10e18, hook);
+        (uint256 usdcOut,,) = router.fill(10e18, hook);
         assertEq(usdcOut, 20e18, "empty maker skipped, next covers");
         sA; // silence unused
     }

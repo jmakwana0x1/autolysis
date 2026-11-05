@@ -12,24 +12,26 @@ import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {BackstopHook} from "../../src/backstop/BackstopHook.sol";
+import {V4Venue} from "../../src/backstop/V4Venue.sol";
 import {AutolysisAquaRouter} from "../../src/aqua/AutolysisAquaRouter.sol";
 import {MakerFactory} from "../../src/aqua/MakerFactory.sol";
-import {WalletMakerStrategy} from "../../src/aqua/WalletMakerStrategy.sol";
 import {IMakerStrategy} from "../../src/aqua/IMakerStrategy.sol";
 import {RoundFeed} from "../../src/core/RoundFeed.sol";
 import {IRoundFeed} from "../../src/interfaces/IRoundFeed.sol";
 import {IERC20Min} from "../../src/interfaces/IERC20Min.sol";
 
-/// @notice Phase 3+4 backstop: deposits tier, Aqua maker tier, and the three-tier waterfall.
+/// @notice Phase 3/4 backstop with the C3/C4 rework: the hook authorizes on a registered V4Venue that is
+///         mid-liquidation, and pays makers + house their collateral in the same fill.
 contract BackstopHookTest is Test, Deployers {
     BackstopHook hook;
+    V4Venue venue;
     PoolKey hookKey;
     PoolKey vanillaKey;
     RoundFeed feed;
     AutolysisAquaRouter router;
     MakerFactory factory;
-    address constant MARKET = address(0x3A12E7);
     address maker = address(0xAABB);
+    address hookOwner = address(0xF00D);
 
     uint160 constant FLAGS =
         uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
@@ -37,11 +39,10 @@ contract BackstopHookTest is Test, Deployers {
     function setUp() public {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
-        // currency1 is the debt (USDC) side; currency0 is collateral. Oracle: 1 collateral = 1 USDC.
-        feed = new RoundFeed(address(this), 1e18);
+        feed = new RoundFeed(address(this), 1e18); // 1 collateral = 1 USDC
 
         address hookAddr = address(FLAGS);
-        BackstopHook impl = new BackstopHook(manager, address(this), IRoundFeed(address(feed)), currency1);
+        BackstopHook impl = new BackstopHook(manager, hookOwner, IRoundFeed(address(feed)), currency1);
         vm.etch(hookAddr, address(impl).code);
         hook = BackstopHook(hookAddr);
 
@@ -49,29 +50,38 @@ contract BackstopHookTest is Test, Deployers {
             IRoundFeed(address(feed)),
             IERC20Min(Currency.unwrap(currency1)),
             IERC20Min(Currency.unwrap(currency0)),
-            address(this)
+            hookOwner
         );
-        router.setHook(hookAddr);
         factory = new MakerFactory();
+        vm.startPrank(hookOwner);
+        router.setHook(hookAddr);
         router.allowTemplate(factory.cloneCodehash(), true);
         hook.setRouter(router);
+        vm.stopPrank();
 
         (hookKey,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddr), 3000, SQRT_PRICE_1_1);
         (vanillaKey,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
+
+        // This test contract plays the market: it owns a V4Venue and drives it like executeLiquidation.
+        venue = new V4Venue(manager, address(this), currency0, currency1, true);
+        venue.setKey(hookKey);
+        vm.prank(hookOwner);
+        hook.setVenue(address(venue), true);
     }
 
     function _liq() internal pure returns (bytes memory) {
-        return abi.encode(BackstopHook.HookData({isLiquidation: true, market: MARKET}));
+        return abi.encode(BackstopHook.HookData({isLiquidation: true}));
     }
 
-    function _swap(PoolKey memory key, bool zeroForOne, int256 amt, bytes memory hd) internal returns (BalanceDelta) {
+    function _sell(uint256 amt, uint256 minOut) internal returns (uint256) {
+        MockERC20(Currency.unwrap(currency0)).transfer(address(venue), amt); // settle-before-swap
+        return venue.sellCollateral(amt, minOut);
+    }
+
+    function _directSwap(PoolKey memory key, bytes memory hd) internal returns (BalanceDelta) {
         return swapRouter.swap(
             key,
-            SwapParams({
-                zeroForOne: zeroForOne,
-                amountSpecified: amt,
-                sqrtPriceLimitX96: zeroForOne ? 4295128740 : 1461446703485210103287273052203988822378723970341
-            }),
+            SwapParams({zeroForOne: true, amountSpecified: -1e15, sqrtPriceLimitX96: 4295128740}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hd
         );
@@ -79,9 +89,11 @@ contract BackstopHookTest is Test, Deployers {
 
     function _fundDeposits(uint256 amt) internal {
         MockERC20 t1 = MockERC20(Currency.unwrap(currency1));
-        t1.mint(address(this), amt);
+        t1.mint(hookOwner, amt);
+        vm.startPrank(hookOwner);
         t1.approve(address(hook), type(uint256).max);
         hook.deposit(currency1, amt);
+        vm.stopPrank();
     }
 
     function _addMaker(uint256 fund, uint256 maxSize) internal {
@@ -89,108 +101,80 @@ contract BackstopHookTest is Test, Deployers {
         MockERC20(Currency.unwrap(currency1)).mint(maker, fund);
         vm.prank(maker);
         MockERC20(Currency.unwrap(currency1)).approve(m, type(uint256).max);
+        vm.prank(hookOwner);
         router.registerMaker(IMakerStrategy(m), 0);
     }
 
-    // Outside swapper sees a normal pool: matches the vanilla pool to the wei.
+    function _colId() internal view returns (uint256) {
+        return uint256(uint160(Currency.unwrap(currency0)));
+    }
+
+    // C3: an outside swapper passing liquidation hookData is NOT a registered venue -> vanilla path.
+    function test_forgedHookDataGetsVanillaPath() public {
+        _fundDeposits(10e18);
+        BalanceDelta h = _directSwap(hookKey, _liq());
+        BalanceDelta v = _directSwap(vanillaKey, "");
+        assertEq(h.amount1(), v.amount1(), "forged liquidation must not fill from the hook");
+        assertEq(hook.depositsOf(currency1), 10e18, "deposits must be untouched by a forged swap");
+    }
+
     function test_outsideSwapperMatchesVanilla() public {
-        BalanceDelta h = _swap(hookKey, true, -1e15, "");
-        BalanceDelta v = _swap(vanillaKey, true, -1e15, "");
-        assertEq(h.amount0(), v.amount0());
+        BalanceDelta h = _directSwap(hookKey, "");
+        BalanceDelta v = _directSwap(vanillaKey, "");
         assertEq(h.amount1(), v.amount1());
     }
 
-    // Unregistered market follows the vanilla path.
-    function test_unregisteredMarketVanillaPath() public {
+    // C4: a registered venue's liquidation fills from deposits; the house (owner) is paid collateral
+    // claims and the hook holds no collateral claims afterward.
+    function test_depositsFillPaysHouseAndLeavesNoClaims() public {
         _fundDeposits(10e18);
-        BalanceDelta h = _swap(hookKey, true, -1e15, _liq());
-        BalanceDelta v = _swap(vanillaKey, true, -1e15, "");
-        assertEq(h.amount1(), v.amount1());
+        uint256 ownerClaimsBefore = manager.balanceOf(hookOwner, _colId());
+        uint256 got = _sell(1e15, 1e15); // 1:1 oracle
+        assertEq(got, 1e15, "venue should raise 1e15 USDC from the deposits tier");
+        assertEq(manager.balanceOf(hookOwner, _colId()) - ownerClaimsBefore, 1e15, "house not paid collateral");
+        assertEq(manager.balanceOf(address(hook), _colId()), 0, "hook must hold no collateral claims");
     }
 
-    // Deposits tier fills the whole liquidation when no makers exist (tier 2 only).
-    function test_depositsTierFill() public {
-        hook.setMarket(MARKET, true);
-        _fundDeposits(10e18);
-        uint256 houseBefore = hook.houseCollateral();
-        BalanceDelta d = _swap(hookKey, true, -1e15, _liq());
-        assertEq(d.amount0(), -int128(1e15), "all collateral consumed by hook");
-        assertEq(d.amount1(), int128(1e15), "usdc out at 1:1 oracle price");
-        assertEq(hook.houseCollateral(), houseBefore + 1e15, "deposits tier should book the collateral");
-        assertEq(hook.makerCollateralOwed(), 0, "no makers used");
+    // C4: a maker fill moves USDC from the maker wallet and pays the maker collateral claims.
+    function test_makerFillPaysMakerCollateral() public {
+        _addMaker(1e15, 1e15);
+        uint256 makerUsdcBefore = MockERC20(Currency.unwrap(currency1)).balanceOf(maker);
+        uint256 makerClaimsBefore = manager.balanceOf(maker, _colId());
+        _sell(1e15, 1e15);
+        assertEq(
+            makerUsdcBefore - MockERC20(Currency.unwrap(currency1)).balanceOf(maker), 1e15, "maker USDC not pulled"
+        );
+        assertEq(manager.balanceOf(maker, _colId()) - makerClaimsBefore, 1e15, "maker not paid collateral");
+        assertEq(manager.balanceOf(address(hook), _colId()), 0, "hook must hold no collateral claims");
     }
 
-    // Waterfall order: makers (tier 1) are used before deposits (tier 2); the remainder hits the curve.
+    // Waterfall order: makers (tier 1) before deposits (tier 2); remainder to the curve (tier 3).
     function test_waterfallOrder() public {
-        hook.setMarket(MARKET, true);
-        _addMaker(0.4e15, 0.4e15); // maker covers 0.4e15 collateral (at 1:1)
-        _fundDeposits(0.4e15); // deposits cover another 0.4e15
-        // Sell 1e15 collateral: 0.4 makers + 0.4 deposits + 0.2 curve.
-        BalanceDelta d = _swap(hookKey, true, -1e15, _liq());
-
-        assertEq(hook.makerCollateralOwed(), 0.4e15, "tier 1 (makers) should fill first");
-        assertEq(hook.houseCollateral(), 0.4e15, "tier 2 (deposits) fills the next slice");
-        // Hook consumed 0.8e15 collateral for 0.8e15 USDC; the remaining 0.2e15 went to the curve.
-        assertLt(d.amount1(), int128(1e15), "curve leg returns less than par due to price impact");
-        assertGt(d.amount1(), int128(0.8e15), "but more than just the backstop slice");
+        _addMaker(0.4e15, 0.4e15);
+        _fundDeposits(0.4e15);
+        uint256 makerClaimsBefore = manager.balanceOf(maker, _colId());
+        uint256 ownerClaimsBefore = manager.balanceOf(hookOwner, _colId());
+        _sell(1e15, 0); // 0.4 makers + 0.4 deposits + 0.2 curve
+        assertEq(manager.balanceOf(maker, _colId()) - makerClaimsBefore, 0.4e15, "tier 1 maker share");
+        assertEq(manager.balanceOf(hookOwner, _colId()) - ownerClaimsBefore, 0.4e15, "tier 2 house share");
+        assertEq(manager.balanceOf(address(hook), _colId()), 0, "hook holds no claims");
     }
 
-    // Tier 2 is NOT touched when tier 1 covers the whole sale.
     function test_tier2UntouchedWhenMakersCover() public {
-        hook.setMarket(MARKET, true);
-        _addMaker(10e18, 10e18); // makers can cover everything
+        _addMaker(2e15, 2e15);
         _fundDeposits(10e18);
-        _swap(hookKey, true, -1e15, _liq());
-        assertEq(hook.makerCollateralOwed(), 1e15, "makers cover the full sale");
-        assertEq(hook.houseCollateral(), 0, "deposits tier must stay untouched");
+        uint256 ownerClaimsBefore = manager.balanceOf(hookOwner, _colId());
+        _sell(1e15, 1e15);
+        assertEq(manager.balanceOf(hookOwner, _colId()), ownerClaimsBefore, "deposits tier must stay untouched");
     }
 
-    // Oracle pricing: at 2 USDC per collateral, selling 1e15 collateral yields 2e15 USDC from deposits.
-    function test_oraclePricedDepositsFill() public {
-        feed.post(2e18);
-        hook.setMarket(MARKET, true);
-        _fundDeposits(10e18);
-        BalanceDelta d = _swap(hookKey, true, -1e15, _liq());
-        assertEq(d.amount0(), -int128(1e15));
-        assertEq(d.amount1(), int128(2e15), "2 USDC per collateral");
-    }
-
-    // Both currency orderings: a pool where collateral is currency1 and debt is currency0 also fills.
-    function test_bothCurrencyOrders() public {
-        address hookAddr2 = address(uint160(uint160(FLAGS) | (0x1234 << 20)));
-        BackstopHook impl2 = new BackstopHook(manager, address(this), IRoundFeed(address(feed)), currency0);
-        vm.etch(hookAddr2, address(impl2).code);
-        BackstopHook hook2 = BackstopHook(hookAddr2);
-        hook2.setMarket(MARKET, true);
-        (PoolKey memory k2,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddr2), 3000, SQRT_PRICE_1_1);
-
-        MockERC20 t0 = MockERC20(Currency.unwrap(currency0));
-        t0.mint(address(this), 10e18);
-        t0.approve(address(hook2), type(uint256).max);
-        hook2.deposit(currency0, 10e18);
-
-        // Sell currency1 (collateral) for currency0 (debt): zeroForOne=false.
-        BalanceDelta d = _swap(k2, false, -1e15, _liq());
-        assertEq(d.amount1(), -int128(1e15), "collateral (currency1) consumed");
-        assertEq(d.amount0(), int128(1e15), "debt (currency0) out at 1:1");
-        assertEq(hook2.houseCollateral(), 1e15);
-    }
-
-    // Pool manipulation is harmless: the backstop fill is oracle-priced, not pool-priced.
-    function test_poolManipulationHarmless() public {
-        hook.setMarket(MARKET, true);
-        _fundDeposits(100e18);
-        _swap(hookKey, true, -5e17, ""); // attacker shoves the pool price
-        BalanceDelta d = _swap(hookKey, true, -1e15, _liq());
-        assertEq(d.amount1(), int128(1e15), "oracle-priced fill unaffected by pool price");
-    }
-
-    // Deltas net to zero for every backstop swap (the unlock reverts otherwise), both directions.
+    // Deltas net to zero for every backstop sale (the unlock reverts otherwise).
     function testFuzz_deltasNetToZero(uint96 amt, bool withMaker) public {
-        hook.setMarket(MARKET, true);
         uint256 a = bound(uint256(amt), 1e9, 1e17);
         _fundDeposits(1e18);
-        if (withMaker) _addMaker(1e18, 1e18);
-        _swap(hookKey, true, -int256(a), _liq());
+        if (withMaker) _addMaker(1e17, 1e17);
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), a);
+        _sell(a, 0);
+        assertEq(manager.balanceOf(address(hook), _colId()), 0, "hook holds no claims after fill");
     }
 }

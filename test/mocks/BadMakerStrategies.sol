@@ -5,6 +5,10 @@ import {IMakerStrategy} from "../../src/aqua/IMakerStrategy.sol";
 
 /// Burns all forwarded gas in available() -> the router's stipend cuts it off and skips the maker.
 contract GasBombStrategy is IMakerStrategy {
+    function wallet() external view returns (address) {
+        return address(this);
+    }
+
     function available() external view returns (uint256) {
         uint256 x;
         for (uint256 i; i < 1e9; ++i) {
@@ -20,6 +24,10 @@ contract GasBombStrategy is IMakerStrategy {
 
 /// Promises USDC in available() but reverts on commit (rug between quote and fill) -> skipped.
 contract RugStrategy is IMakerStrategy {
+    function wallet() external view returns (address) {
+        return address(this);
+    }
+
     function available() external pure returns (uint256) {
         return 1_000_000e18;
     }

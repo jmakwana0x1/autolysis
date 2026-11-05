@@ -57,7 +57,7 @@ contract RouterHandler is Test {
         vm.prank(hook);
         router.setGate(true);
         vm.prank(hook);
-        try router.fill(amt, hook) returns (uint256 usdcOut, uint256) {
+        try router.fill(amt, hook) returns (uint256 usdcOut, uint256, AutolysisAquaRouter.Payout[] memory) {
             hookReceived += usdcOut;
         } catch {}
         vm.prank(hook);

@@ -15,41 +15,46 @@ import {IRoundFeed} from "../interfaces/IRoundFeed.sol";
 import {AutolysisAquaRouter} from "../aqua/AutolysisAquaRouter.sol";
 import {AquaPricing} from "../aqua/AquaPricing.sol";
 
+/// @notice Minimal view the hook needs of whoever drives the swap: whether a liquidation is active.
+interface ILiquidationCaller {
+    function liquidationActive() external view returns (bool);
+}
+
 /// @title BackstopHook
 /// @notice Uniswap v4 hook backstopping Autolysis liquidations with a three-tier waterfall: Aqua makers
-///         first, then the hook's own deposits, then the vanilla curve. Guarantees: deltas net to zero;
-///         an outside swapper / unregistered market sees a normal pool (ZERO_DELTA); settle-before-swap;
-///         reentrancy blocked; tier 2 is only touched when tier 1 cannot cover, tier 3 only when neither
-///         can. The collateral the taker sells is priced in the output currency by the oracle; makers
-///         and deposits fill at that price, and any remainder flows to the concentrated-liquidity curve.
-/// @dev The output currency is the debt token (USDC). The input currency is collateral. Only exact-input
-///      liquidations are backstopped; everything else is ZERO_DELTA.
+///         first, then the hook's own deposits, then the vanilla curve. Guarantees:
+///         - Only a registered venue, and only while that venue reports an active liquidation, is filled;
+///           any other swapper sees a normal pool (ZERO_DELTA). Authorization is on `sender`, never on
+///           self-declared `hookData` (C3), so hookData carries only the liquidation flag.
+///         - Deltas net to zero; settle-before-swap; reentrancy blocked.
+///         - Makers and the house are paid their collateral as ERC-6909 claims in the same fill (C4), so
+///           the hook holds no collateral claims after a swap.
+///         - Tier 2 is touched only when tier 1 cannot cover, tier 3 only when neither can.
+/// @dev Output currency is the debt token (USDC); input is collateral. Only exact-input liquidations are
+///      backstopped; everything else is ZERO_DELTA.
 contract BackstopHook is BaseHook {
     using CurrencySettler for Currency;
 
     struct HookData {
         bool isLiquidation;
-        address market;
     }
 
     address public immutable owner;
     IRoundFeed public immutable feed;
-    Currency public immutable debtCurrency; // the output (USDC) side
+    Currency public immutable debtCurrency;
     AutolysisAquaRouter public router;
 
-    mapping(address => bool) public registeredMarket;
+    mapping(address => bool) public registeredVenue; // the authorized swap callers (sender)
     mapping(Currency => uint256) public depositsOf; // house deposits tier, by currency
-    uint256 public makerCollateralOwed; // collateral claims accrued to makers (withdrawable)
-    uint256 public houseCollateral; // collateral claims the house earned via its deposits tier
 
     bool private _entered;
 
     error NotOwner();
     error Reentrancy();
 
-    event MarketRegistered(address indexed market, bool allowed);
+    event VenueRegistered(address indexed venue, bool allowed);
     event Deposited(Currency indexed currency, uint256 amount);
-    event Waterfall(address indexed market, uint256 tier1Usdc, uint256 tier2Usdc, uint256 tier3Collateral);
+    event Waterfall(address indexed venue, uint256 tier1Usdc, uint256 tier2Usdc, uint256 tier3Collateral);
 
     constructor(IPoolManager manager_, address owner_, IRoundFeed feed_, Currency debtCurrency_) BaseHook(manager_) {
         owner = owner_;
@@ -75,9 +80,10 @@ contract BackstopHook is BaseHook {
         p.beforeAddLiquidity = true;
     }
 
-    function setMarket(address market, bool allowed) external onlyOwner {
-        registeredMarket[market] = allowed;
-        emit MarketRegistered(market, allowed);
+    /// @notice Register (or revoke) a venue whose liquidation swaps the hook will backstop.
+    function setVenue(address venue, bool allowed) external onlyOwner {
+        registeredVenue[venue] = allowed;
+        emit VenueRegistered(venue, allowed);
     }
 
     function setRouter(AutolysisAquaRouter router_) external onlyOwner {
@@ -90,79 +96,106 @@ contract BackstopHook is BaseHook {
         emit Deposited(currency, amount);
     }
 
-    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
+    function _beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         internal
         override
         nonReentrant
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         HookData memory hd = _decode(hookData);
-        if (!hd.isLiquidation || !registeredMarket[hd.market] || params.amountSpecified >= 0) {
+        // Authorize on the caller, not on hookData: only a registered venue mid-liquidation is filled.
+        bool authorized = hd.isLiquidation && registeredVenue[sender] && ILiquidationCaller(sender).liquidationActive();
+        if (!authorized || params.amountSpecified >= 0) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
         (Currency inputCurrency, Currency outputCurrency) =
             params.zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
-        // Only backstop the collateral->debt direction (output must be the debt currency).
         if (Currency.unwrap(outputCurrency) != Currency.unwrap(debtCurrency)) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
         uint256 collateralOffered = uint256(-params.amountSpecified);
-        (uint256 consumedCol, uint256 usdcOut) = _waterfall(hd.market, collateralOffered);
+        (uint256 consumedCol, uint256 usdcOut) = _waterfall(sender, inputCurrency, collateralOffered);
         if (consumedCol == 0) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // settle-before-swap: resolve the input leg as claims (no reserve draw), then settle the USDC we
-        // sourced out to the manager. consumedCol collateral is taken; usdcOut debt token is paid.
+        // settle-before-swap: resolve the input leg as claims (no reserve draw), then settle the sourced
+        // USDC out to the manager. The collateral claims are fully distributed inside _waterfall, so the
+        // hook holds none afterward.
         inputCurrency.take(manager, address(this), consumedCol, true); // mint collateral claims
+        _distribute(inputCurrency, consumedCol);
         outputCurrency.settle(manager, address(this), usdcOut, false); // real USDC -> manager
 
-        // Any remainder (collateralOffered - consumedCol) flows to the vanilla curve.
         BeforeSwapDelta delta = toBeforeSwapDelta(int128(int256(consumedCol)), -int128(int256(usdcOut)));
         return (IHooks.beforeSwap.selector, delta, 0);
     }
 
-    /// @dev Three-tier waterfall. Returns collateral consumed by tiers 1+2 and the USDC sourced for it.
-    function _waterfall(address market, uint256 collateralOffered)
+    // transient per-fill distribution plan: maker payouts collected during the waterfall, paid after the
+    // claims are minted. Kept in memory via storage arrays cleared each fill.
+    AutolysisAquaRouter.Payout[] private _pendingPayouts;
+    uint256 private _houseCollateral;
+
+    /// @dev Three-tier waterfall. Returns collateral consumed by tiers 1+2 and the USDC sourced for it,
+    ///      and records how that collateral is split between makers and the house for `_distribute`.
+    function _waterfall(address venue, Currency, uint256 collateralOffered)
         internal
         returns (uint256 consumedCol, uint256 usdcOut)
     {
+        delete _pendingPayouts;
+        _houseCollateral = 0;
         uint256 remaining = collateralOffered;
         uint256 tier1Usdc;
         uint256 tier2Usdc;
 
-        // Tier 1: Aqua makers (if a router is set). The router pulls USDC from maker wallets into the
-        // hook and reports the collateral it consumed; that collateral is owed to makers.
+        // Tier 1: Aqua makers. The router pulls USDC from maker wallets into the hook and reports each
+        // maker's collateral share; the gate is opened only for this call.
         if (address(router) != address(0)) {
             router.setGate(true);
-            (uint256 u1, uint256 c1) = router.fill(remaining, address(this));
+            (uint256 u1, uint256 c1, AutolysisAquaRouter.Payout[] memory payouts) =
+                router.fill(remaining, address(this));
             router.setGate(false);
-            if (c1 > remaining) c1 = remaining; // defensive
+            if (c1 > remaining) c1 = remaining;
+            for (uint256 i; i < payouts.length; ++i) {
+                _pendingPayouts.push(payouts[i]);
+            }
             tier1Usdc = u1;
-            makerCollateralOwed += c1;
             consumedCol += c1;
             remaining -= c1;
         }
 
         // Tier 2: the house deposits tier, only when tier 1 could not cover the whole sale.
         if (remaining > 0 && depositsOf[debtCurrency] > 0) {
-            uint256 eff = feed.getRound(feed.latestRound()).price; // house fills at the oracle price
+            uint256 eff = feed.getRound(feed.latestRound()).price;
             uint256 capCol = AquaPricing.collateralForUsdc(depositsOf[debtCurrency], eff);
             uint256 c2 = capCol < remaining ? capCol : remaining;
             uint256 u2 = AquaPricing.usdcForCollateral(c2, eff);
             if (u2 > depositsOf[debtCurrency]) u2 = depositsOf[debtCurrency];
             depositsOf[debtCurrency] -= u2;
-            houseCollateral += c2;
+            _houseCollateral = c2;
             tier2Usdc = u2;
             consumedCol += c2;
             remaining -= c2;
         }
 
         usdcOut = tier1Usdc + tier2Usdc;
-        // Tier 3 is whatever remains (handled by the vanilla curve via the leftover specified amount).
-        emit Waterfall(market, tier1Usdc, tier2Usdc, remaining);
+        emit Waterfall(venue, tier1Usdc, tier2Usdc, remaining);
+    }
+
+    /// @dev Pay out the collateral claims the hook just minted: makers to their wallets, the house share
+    ///      to the owner. Both as ERC-6909 claims (redeemable from the manager), so the hook ends the
+    ///      fill holding zero collateral claims.
+    function _distribute(Currency inputCurrency, uint256) internal {
+        uint256 id = uint256(uint160(Currency.unwrap(inputCurrency))); // CurrencyLibrary.toId
+        uint256 len = _pendingPayouts.length;
+        for (uint256 i; i < len; ++i) {
+            AutolysisAquaRouter.Payout memory po = _pendingPayouts[i];
+            if (po.collateral > 0) manager.transfer(po.recipient, id, po.collateral);
+        }
+        if (_houseCollateral > 0) manager.transfer(owner, id, _houseCollateral);
+        delete _pendingPayouts;
+        _houseCollateral = 0;
     }
 
     function _decode(bytes calldata hookData) internal pure returns (HookData memory hd) {
