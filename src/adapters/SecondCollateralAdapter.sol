@@ -40,10 +40,7 @@ contract SecondCollateralAdapter is ICollateralAdapter {
         return feed.priceForLiquidation(roundId);
     }
 
-    function sell(uint256 collateralIn, uint256 minDebtOut, bytes calldata)
-        external
-        returns (uint256 debtOut)
-    {
+    function sell(uint256 collateralIn, uint256 minDebtOut, bytes calldata) external returns (uint256 debtOut) {
         if (address(venue) == address(0)) revert NotWired();
         // settle-before-swap, mirroring AutolysisMarket: move collateral to the venue, then swap.
         IERC20Min(token).transfer(address(venue), collateralIn);

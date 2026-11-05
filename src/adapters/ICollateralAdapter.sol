@@ -15,7 +15,5 @@ interface ICollateralAdapter {
 
     /// @notice Sell `collateralIn` of this collateral for at least `minDebtOut` debt token, routing
     ///         through the configured venue (v4 pool + backstop hook). Returns debt raised.
-    function sell(uint256 collateralIn, uint256 minDebtOut, bytes calldata routeData)
-        external
-        returns (uint256 debtOut);
+    function sell(uint256 collateralIn, uint256 minDebtOut, bytes calldata routeData) external returns (uint256 debtOut);
 }
