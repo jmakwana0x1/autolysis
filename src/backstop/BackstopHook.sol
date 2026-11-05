@@ -18,6 +18,7 @@ import {AquaPricing} from "../aqua/AquaPricing.sol";
 /// @notice Minimal view the hook needs of whoever drives the swap: whether a liquidation is active.
 interface ILiquidationCaller {
     function liquidationActive() external view returns (bool);
+    function liquidationPrice() external view returns (uint256);
 }
 
 /// @title BackstopHook
@@ -116,7 +117,7 @@ contract BackstopHook is BaseHook {
         }
 
         uint256 collateralOffered = uint256(-params.amountSpecified);
-        (uint256 consumedCol, uint256 usdcOut) = _waterfall(sender, inputCurrency, collateralOffered);
+        (uint256 consumedCol, uint256 usdcOut) = _waterfall(sender, collateralOffered);
         if (consumedCol == 0) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
@@ -139,10 +140,11 @@ contract BackstopHook is BaseHook {
 
     /// @dev Three-tier waterfall. Returns collateral consumed by tiers 1+2 and the USDC sourced for it,
     ///      and records how that collateral is split between makers and the house for `_distribute`.
-    function _waterfall(address venue, Currency, uint256 collateralOffered)
+    function _waterfall(address venue, uint256 collateralOffered)
         internal
         returns (uint256 consumedCol, uint256 usdcOut)
     {
+        uint256 roundPrice = ILiquidationCaller(venue).liquidationPrice();
         delete _pendingPayouts;
         _houseCollateral = 0;
         uint256 remaining = collateralOffered;
@@ -154,7 +156,7 @@ contract BackstopHook is BaseHook {
         if (address(router) != address(0)) {
             router.setGate(true);
             (uint256 u1, uint256 c1, AutolysisAquaRouter.Payout[] memory payouts) =
-                router.fill(remaining, address(this));
+                router.fill(remaining, address(this), roundPrice);
             router.setGate(false);
             if (c1 > remaining) c1 = remaining;
             for (uint256 i; i < payouts.length; ++i) {

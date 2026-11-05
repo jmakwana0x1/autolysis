@@ -13,8 +13,8 @@ import {ProbeConstants} from "../generated/ProbeConstants.sol";
 library FirewallRules {
     /// @dev selector of AutolysisAccount.verify() and execute(uint256,uint256); kept here so the rule
     ///      is self-contained and fuzzable without deploying the account.
-    bytes4 internal constant VERIFY_SEL = 0xfc735e99; // bytes4(keccak256("verify()"))
-    bytes4 internal constant EXECUTE_SEL = 0x5601eaea; // bytes4(keccak256("execute(uint256,uint256)"))
+    bytes4 internal constant VERIFY_SEL = 0x3ad51b8d; // bytes4(keccak256("verifyLiquidation()"))
+    bytes4 internal constant EXECUTE_SEL = 0xf3ab9cad; // bytes4(keccak256("selfLiquidate(uint256,uint256)"))
 
     enum Reject {
         OK,

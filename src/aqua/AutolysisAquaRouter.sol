@@ -96,6 +96,10 @@ contract AutolysisAquaRouter {
         return oracle.effectivePrice(baseSpreadBps, volAddonBps);
     }
 
+    function _effPriceAt(uint256 oraclePrice, uint256 baseSpreadBps) internal view returns (uint256) {
+        return oraclePrice.effectivePrice(baseSpreadBps, volAddonBps);
+    }
+
     /// @notice Quote the USDC a fill of `collateralIn` would raise across makers, at current prices.
     ///         Uses the same pricing and the same skip rules as `fill` (a view, so no stipend / no
     ///         state): quote equals fill under unchanged state.
@@ -126,7 +130,7 @@ contract AutolysisAquaRouter {
     /// @notice Fill up to `collateralIn` collateral from makers, raising USDC to `to`. Gated: only the
     ///         hook may call, and only while the gate is open (transient). Returns USDC raised, collateral
     ///         used, and the per-maker collateral the hook must pay out of the sold collateral.
-    function fill(uint256 collateralIn, address to)
+    function fill(uint256 collateralIn, address to, uint256 oraclePrice)
         external
         returns (uint256 usdcOut, uint256 collateralUsed, Payout[] memory payouts)
     {
@@ -138,7 +142,7 @@ contract AutolysisAquaRouter {
         uint256 filled;
         uint256 remaining = collateralIn;
         for (uint256 i; i < n && remaining > 0; ++i) {
-            (uint256 moved, uint256 collForMoved, address recipient) = _fillOne(i, remaining, to);
+            (uint256 moved, uint256 collForMoved, address recipient) = _fillOne(i, remaining, to, oraclePrice);
             if (moved == 0) continue;
             payouts[filled++] = Payout({recipient: recipient, collateral: collForMoved});
             usdcOut += moved;
@@ -155,13 +159,13 @@ contract AutolysisAquaRouter {
     /// @dev One maker's contribution: pull up to `remaining` collateral-worth of USDC to `to`, under the
     ///      gas stipend and the skip rules. Returns USDC moved, collateral the maker is owed, and the
     ///      maker's wallet.
-    function _fillOne(uint256 i, uint256 remaining, address to)
+    function _fillOne(uint256 i, uint256 remaining, address to, uint256 oraclePrice)
         internal
         returns (uint256 moved, uint256 collForMoved, address recipient)
     {
         Maker storage m = makers[i];
         if (!m.active) return (0, 0, address(0));
-        uint256 eff = _effPrice(m.baseSpreadBps);
+        uint256 eff = _effPriceAt(oraclePrice, m.baseSpreadBps);
         if (eff == 0) return (0, 0, address(0));
 
         uint256 makerUsdc = _availableStipended(m.strategy);

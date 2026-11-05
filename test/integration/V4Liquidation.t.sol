@@ -149,9 +149,9 @@ contract V4LiquidationTest is Test, Deployers {
 
         env.set(_tx(roundId, 0));
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         vm.prank(address(account));
-        account.execute(posId, roundId);
+        account.selfLiquidate(posId, roundId);
 
         (,, uint256 debtAfter,) = market.positions(posId);
         assertLt(debtAfter, debtBefore, "debt not reduced through the v4 backstop");

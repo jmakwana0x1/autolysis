@@ -52,7 +52,7 @@ contract AutolysisAccount {
 
     /// @notice VERIFY frame entry point. Reverts (rejecting the tx) unless the submitted frame tx is
     ///         exactly the canonical liquidation for a currently-unhealthy position; otherwise approves.
-    function verify() external {
+    function verifyLiquidation() external {
         TxView memory v = env.load();
 
         // The execute frame carries (positionId, roundId); decode to build on-chain expectations.
@@ -91,7 +91,7 @@ contract AutolysisAccount {
 
     /// @notice SENDER frame entry point: the never-revert envelope. Runs one gradual liquidation step;
     ///         on any failure it bills the failed-attempt cap and returns cleanly.
-    function execute(uint256 positionId, uint256 roundId) external {
+    function selfLiquidate(uint256 positionId, uint256 roundId) external {
         // In a SENDER frame the caller is tx.sender, which is this account itself. Nothing else may
         // call execute, or a stranger could loop failing attempts and bill the borrower's tank (C1).
         if (msg.sender != address(this)) revert NotSelf();

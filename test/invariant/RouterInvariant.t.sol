@@ -57,7 +57,9 @@ contract RouterHandler is Test {
         vm.prank(hook);
         router.setGate(true);
         vm.prank(hook);
-        try router.fill(amt, hook) returns (uint256 usdcOut, uint256, AutolysisAquaRouter.Payout[] memory) {
+        try router.fill(amt, hook, feed.getRound(feed.latestRound()).price) returns (
+            uint256 usdcOut, uint256, AutolysisAquaRouter.Payout[] memory
+        ) {
             hookReceived += usdcOut;
         } catch {}
         vm.prank(hook);
@@ -67,7 +69,7 @@ contract RouterHandler is Test {
     function strangerFill(uint256 amt) public {
         amt = bound(amt, 1, 100e18);
         uint256 before = usdc.balanceOf(address(this));
-        try router.fill(amt, address(this)) {
+        try router.fill(amt, address(this), feed.getRound(feed.latestRound()).price) {
             strangerMoved += usdc.balanceOf(address(this)) - before;
         } catch {}
     }

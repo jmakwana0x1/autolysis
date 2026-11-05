@@ -52,7 +52,7 @@ contract C1ExecuteGuardTest is Test {
         (,, uint256 debtBefore,) = market.positions(posId);
         vm.prank(address(0xBAD));
         vm.expectRevert(AutolysisAccount.NotSelf.selector);
-        account.execute(posId, 1);
+        account.selfLiquidate(posId, 1);
         // tank must be untouched
         (,, uint256 debtAfter,) = market.positions(posId);
         assertEq(debtAfter, debtBefore);

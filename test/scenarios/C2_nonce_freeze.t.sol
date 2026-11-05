@@ -95,10 +95,10 @@ contract C2NonceFreezeTest is Test {
         usdc.transfer(address(0xdead), bal); // drain the venue -> slippage revert in execution
         env.set(_tx(good, 0));
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         assertEq(env.sequenceOf(key), 1, "nonce should be burned at approve");
         vm.prank(address(account));
-        account.execute(posId, good); // fails inside the envelope, no liquidation
+        account.selfLiquidate(posId, good); // fails inside the envelope, no liquidation
         assertEq(market.liquidationCount(posId), 0, "no successful step yet");
 
         usdc.mint(address(curve), 1e24); // refill the venue for the next attempt
@@ -107,10 +107,10 @@ contract C2NonceFreezeTest is Test {
         env.resetApprovals(address(account));
         env.set(_tx(good, 1));
         vm.prank(address(account));
-        account.verify(); // with the sequence-rule bug this reverts (1 != liquidationCount 0)
+        account.verifyLiquidation(); // with the sequence-rule bug this reverts (1 != liquidationCount 0)
         assertTrue(env.isApproved(address(account)), "next attempt must approve after a failed one");
         vm.prank(address(account));
-        account.execute(posId, good);
+        account.selfLiquidate(posId, good);
         assertEq(market.liquidationCount(posId), 1, "the next attempt must liquidate");
     }
 }

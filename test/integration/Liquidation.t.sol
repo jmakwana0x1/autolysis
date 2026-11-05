@@ -97,11 +97,11 @@ contract LiquidationTest is Test {
         env.set(v);
         // VERIFY frame: called by the account itself via a delegatecall shim? Here the account reads env.
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         assertTrue(env.isApproved(address(account)), "VERIFY did not approve");
         // SENDER frame executes.
         vm.prank(address(account));
-        account.execute(posId, roundId);
+        account.selfLiquidate(posId, roundId);
     }
 
     function test_firstSelfPaidLiquidation() public {
@@ -139,9 +139,9 @@ contract LiquidationTest is Test {
         TxView memory v = _canonicalTx(roundId);
         env.set(v);
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         vm.prank(address(account));
-        account.execute(posId, roundId); // must not revert
+        account.selfLiquidate(posId, roundId); // must not revert
         // Position unchanged (failed attempt), but a fee was billed.
         (,, uint256 debtAmt,) = market.positions(posId);
         assertEq(debtAmt, 150e18, "debt unchanged on failed attempt");

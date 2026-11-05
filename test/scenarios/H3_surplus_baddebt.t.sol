@@ -85,9 +85,9 @@ contract H3Test is Test {
         env.resetApprovals(address(account));
         env.set(_tx(roundId, env.sequenceOf(FirewallRules.nonceKey(address(market), posId))));
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         vm.prank(address(account));
-        account.execute(posId, roundId);
+        account.selfLiquidate(posId, roundId);
     }
 
     // A deep crash below L/(1-s) makes the position insolvent: the whole position is sold, the debt that
@@ -151,9 +151,9 @@ contract H3Test is Test {
         v.frames[1].data = abi.encodeWithSelector(FirewallRules.EXECUTE_SEL, p2, roundId);
         env.set(v);
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         vm.prank(address(account));
-        account.execute(p2, roundId);
+        account.selfLiquidate(p2, roundId);
         // The borrower should have some withdrawable surplus (sale cleared the dust debt with change).
         assertGe(market.withdrawableOf(borrower), 0); // non-reverting path; surplus may be 0 if exact
     }

@@ -126,10 +126,10 @@ contract MarketHandler is Test {
         env.set(v);
         env.resetApprovals(address(account));
         vm.prank(address(account));
-        try account.verify() {
+        try account.verifyLiquidation() {
             uint256 before = market.liquidationCount(id);
             vm.prank(address(account));
-            account.execute(id, roundId);
+            account.selfLiquidate(id, roundId);
             if (market.liquidationCount(id) > before) successfulSteps++;
         } catch {
             verifyReverted++;
@@ -160,9 +160,9 @@ contract MarketHandler is Test {
         env.resetApprovals(address(account));
         uint256 before = market.liquidationCount(id);
         vm.prank(address(account));
-        try account.verify() {
+        try account.verifyLiquidation() {
             vm.prank(address(account));
-            account.execute(id, roundId);
+            account.selfLiquidate(id, roundId);
             if (market.liquidationCount(id) > before) successfulSteps++;
         } catch {
             verifyReverted++;
@@ -174,7 +174,7 @@ contract MarketHandler is Test {
         uint256 id = _pos(seed);
         if (id == 0) return;
         uint256 before = market.totalFeeBilled();
-        try account.execute(id, roundId) {} catch {}
+        try account.selfLiquidate(id, roundId) {} catch {}
         if (market.totalFeeBilled() > before) strangerExecuteBilled += 1;
     }
 

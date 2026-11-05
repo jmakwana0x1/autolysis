@@ -74,6 +74,7 @@ contract BackstopHookTest is Test, Deployers {
     }
 
     function _sell(uint256 amt, uint256 minOut) internal returns (uint256) {
+        venue.setRoundPrice(feed.getRound(feed.latestRound()).price); // the market prices the round
         MockERC20(Currency.unwrap(currency0)).transfer(address(venue), amt); // settle-before-swap
         return venue.sellCollateral(amt, minOut);
     }

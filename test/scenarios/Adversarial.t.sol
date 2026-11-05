@@ -94,7 +94,7 @@ contract AdversarialTest is Test {
         env.set(v);
         env.resetApprovals(address(account));
         vm.prank(address(account));
-        try account.verify() {
+        try account.verifyLiquidation() {
             ok = env.isApproved(address(account));
         } catch {
             ok = false;
@@ -139,10 +139,10 @@ contract AdversarialTest is Test {
         env.resetApprovals(address(account));
         vm.prank(address(account));
         // health at latest is unhealthy, so VERIFY approves the shape; the bad round bites at execute.
-        try account.verify() {} catch {}
+        try account.verifyLiquidation() {} catch {}
         (,, uint256 debtBefore,) = market.positions(posId);
         vm.prank(address(account));
-        account.execute(posId, 2);
+        account.selfLiquidate(posId, 2);
         (,, uint256 debtAfter,) = market.positions(posId);
         assertEq(debtAfter, debtBefore, "out-of-band round must not liquidate");
     }
@@ -166,9 +166,9 @@ contract AdversarialTest is Test {
         TxView memory v = _canonical(roundId);
         env.set(v);
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         vm.prank(address(account));
-        account.execute(posId, roundId);
+        account.selfLiquidate(posId, roundId);
         uint256 billed = market.totalFeeBilled() - before;
         // Failed attempts bill min(MAX_COST, MAX_FAILED_GAS_BILL); never more than the cap.
         assertLe(billed, market.maxFailedGasBill(), "failed-attempt billing exceeded cap");
@@ -186,10 +186,10 @@ contract AdversarialTest is Test {
             env.set(v);
             env.resetApprovals(address(account));
             vm.prank(address(account));
-            try account.verify() {
+            try account.verifyLiquidation() {
                 uint256 before = market.liquidationCount(posId);
                 vm.prank(address(account));
-                account.execute(posId, roundId);
+                account.selfLiquidate(posId, roundId);
                 if (market.liquidationCount(posId) > before) {
                     steps++;
                     uint256 hf = market.healthFactor(posId);

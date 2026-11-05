@@ -84,7 +84,7 @@ contract H1VerifyRoundTest is Test {
         env.resetApprovals(address(account));
         env.set(_tx(roundId, env.sequenceOf(FirewallRules.nonceKey(address(market), posId))));
         vm.prank(address(account));
-        (bool ok,) = address(account).call(abi.encodeWithSelector(AutolysisAccount.verify.selector));
+        (bool ok,) = address(account).call(abi.encodeWithSelector(AutolysisAccount.verifyLiquidation.selector));
         assertFalse(ok, "VERIFY should have rejected the bad round");
         assertFalse(env.isApproved(address(account)), "must not approve a bad round");
     }
@@ -128,9 +128,9 @@ contract H1VerifyRoundTest is Test {
         env.resetApprovals(address(account));
         env.set(_tx(roundId, 0));
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         vm.prank(address(account));
-        account.execute(posId, roundId);
+        account.selfLiquidate(posId, roundId);
         assertEq(market.lastLiquidatedRound(posId), roundId);
         // if still unhealthy, re-citing the same (now used) round must reject
         if (market.healthFactor(posId) < 1e18) _verifyReverts(roundId);
@@ -141,7 +141,7 @@ contract H1VerifyRoundTest is Test {
         env.resetApprovals(address(account));
         env.set(_tx(roundId, 0));
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         assertTrue(env.isApproved(address(account)), "a good, in-window, unhealthy round must approve");
     }
 }

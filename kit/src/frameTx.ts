@@ -53,10 +53,10 @@ export function nonceKeyFor(market: Address, positionId: bigint): bigint {
 }
 
 export const accountAbi = [
-  { type: "function", name: "verify", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  { type: "function", name: "verifyLiquidation", inputs: [], outputs: [], stateMutability: "nonpayable" },
   {
     type: "function",
-    name: "execute",
+    name: "selfLiquidate",
     inputs: [
       { name: "positionId", type: "uint256" },
       { name: "roundId", type: "uint256" },
@@ -97,7 +97,7 @@ export function canonicalLiquidationTx(p: CanonicalParams): FrameTx {
         stateLimit: p.verifyStateLimit,
         value: 0n,
         allowedScope: SCOPE.EXECUTION_AND_PAYMENT,
-        data: encodeFunctionData({ abi: accountAbi, functionName: "verify" }),
+        data: encodeFunctionData({ abi: accountAbi, functionName: "verifyLiquidation" }),
       },
       {
         mode: MODE.SENDER,
@@ -106,7 +106,7 @@ export function canonicalLiquidationTx(p: CanonicalParams): FrameTx {
         stateLimit: 0n,
         value: 0n,
         allowedScope: SCOPE.NONE,
-        data: encodeFunctionData({ abi: accountAbi, functionName: "execute", args: [p.positionId, p.roundId] }),
+        data: encodeFunctionData({ abi: accountAbi, functionName: "selfLiquidate", args: [p.positionId, p.roundId] }),
       },
     ],
   };

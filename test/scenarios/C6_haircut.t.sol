@@ -84,10 +84,10 @@ contract C6HaircutTest is Test {
         env.resetApprovals(address(account));
         env.set(_tx(roundId, seq));
         vm.prank(address(account));
-        account.verify();
+        account.verifyLiquidation();
         uint256 before = market.liquidationCount(posId);
         vm.prank(address(account));
-        account.execute(posId, roundId);
+        account.selfLiquidate(posId, roundId);
         stepped = market.liquidationCount(posId) > before;
     }
 

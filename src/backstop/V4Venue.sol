@@ -30,6 +30,7 @@ contract V4Venue is ISwapVenue, IUnlockCallback {
     bool public immutable zeroForOne; // true when collateral is currency0
 
     uint256 private constant ACTIVE_SLOT = 0xa07aac71; // transient "liquidation active" flag
+    uint256 private constant PRICE_SLOT = 0xa07a9791; // transient cited-round price (WAD)
 
     error NotMarket();
     error NotManager();
@@ -51,6 +52,19 @@ contract V4Venue is ISwapVenue, IUnlockCallback {
     function liquidationActive() external view returns (bool a) {
         assembly {
             a := tload(ACTIVE_SLOT)
+        }
+    }
+
+    function liquidationPrice() external view returns (uint256 p) {
+        assembly {
+            p := tload(PRICE_SLOT)
+        }
+    }
+
+    function setRoundPrice(uint256 price) external {
+        if (msg.sender != market) revert NotMarket();
+        assembly {
+            tstore(PRICE_SLOT, price)
         }
     }
 

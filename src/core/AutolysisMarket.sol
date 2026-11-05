@@ -169,7 +169,9 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         // minOut is the floor of the haircut sale, so a venue with a real fee/spread still clears it.
         uint256 minOut = step.minOut;
 
-        // settle-before-swap: move collateral to the venue first, then swap.
+        // settle-before-swap: move collateral to the venue first, then swap. The venue (and through it
+        // the hook and router) prices against the cited round, not the latest round (M2).
+        venue.setRoundPrice(price);
         collateralToken.transfer(address(venue), step.collateralToSell);
         uint256 got = venue.sellCollateral(step.collateralToSell, minOut);
 
