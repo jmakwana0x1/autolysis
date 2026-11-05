@@ -64,6 +64,6 @@
   },
   "probeCell": null,
   "selectorFallback": false,
-  "verifyGas": null,
-  "validationGasLimit": null
+  "verifyGas": 129389,
+  "validationGasLimit": 1000000
 }

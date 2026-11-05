@@ -13,6 +13,7 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 import {RoundFeed} from "../src/core/RoundFeed.sol";
 import {AutolysisAccount} from "../src/core/AutolysisAccount.sol";
+import {IStakingRegistry} from "../src/frame/IStakingRegistry.sol";
 import {AutolysisMarket} from "../src/core/AutolysisMarket.sol";
 import {IFrameEnv} from "../src/frame/IFrameEnv.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
@@ -51,6 +52,7 @@ contract Deploy is Script {
         address router;
         address factory;
         address liquidityRouter;
+        address stakingRegistry;
     }
 
     Addrs internal A;
@@ -75,6 +77,14 @@ contract Deploy is Script {
         A.account = address(new AutolysisAccount(IFrameEnv(A.frameEnv)));
         A.market = address(new AutolysisMarket(IERC20(A.weth), IERC20(A.usdc), IRoundFeed(A.feed), A.account));
         AutolysisAccount(payable(A.account)).initialize(AutolysisMarket(payable(A.market)), 0.02e18);
+        // Stake the account where a registry is configured (devnet). Set STAKING_REGISTRY and
+        // STAKE_VALUE_WEI; on a local anvil both are unset and staking is skipped.
+        address registry = vm.envOr("STAKING_REGISTRY", address(0));
+        if (registry != address(0)) {
+            A.stakingRegistry = registry;
+            AutolysisAccount(payable(A.account)).setStakingRegistry(IStakingRegistry(registry));
+            AutolysisAccount(payable(A.account)).stake{value: vm.envOr("STAKE_VALUE_WEI", uint256(1 ether))}(86_400);
+        }
     }
 
     /// Pool manager, mined-address hook, venue.
@@ -168,7 +178,8 @@ contract Deploy is Script {
         vm.serializeAddress(o, "V4Venue", a.venue);
         vm.serializeAddress(o, "AutolysisAquaRouter", a.router);
         vm.serializeAddress(o, "MakerFactory", a.factory);
-        string memory json = vm.serializeAddress(o, "PoolModifyLiquidityTest", a.liquidityRouter);
+        vm.serializeAddress(o, "PoolModifyLiquidityTest", a.liquidityRouter);
+        string memory json = vm.serializeAddress(o, "StakingRegistry", a.stakingRegistry);
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
     }
 }

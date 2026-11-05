@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IFrameEnv} from "../frame/IFrameEnv.sol";
+import {IStakingRegistry} from "../frame/IStakingRegistry.sol";
 import {TxView, FrameTypes} from "../frame/FrameTypes.sol";
 import {FirewallRules} from "../libraries/FirewallRules.sol";
 import {ProbeConstants} from "../generated/ProbeConstants.sol";
@@ -24,11 +25,15 @@ contract AutolysisAccount {
     /// Failed-attempt billing cap in debt-token units (what the tank is billed on failure).
     uint256 public failedAttemptCap;
 
+    /// ERC-8421 staking registry; VERIFY may read outside contracts only when this account is staked.
+    IStakingRegistry public stakingRegistry;
+
     error NotOwner();
     error NotSelf();
     error Rejected(FirewallRules.Reject reason);
     error RoundAlreadyUsed();
     error NotUnhealthy();
+    error NoRegistry();
 
     event Approved(uint256 positionId, uint256 roundId);
     event LiquidationOk(uint256 indexed positionId, uint256 debtRepaid, uint256 collateralSold, uint256 fee);
@@ -50,11 +55,26 @@ contract AutolysisAccount {
         feeCapTotal = cap;
     }
 
+    function setStakingRegistry(IStakingRegistry registry) external {
+        if (msg.sender != owner) revert NotOwner();
+        stakingRegistry = registry;
+    }
+
+    /// @notice Stake this account in the ERC-8421 registry so VERIFY may read the market and feed and
+    ///         gets the staked validation-gas limit. The account stakes itself (msg.sender == this), so
+    ///         the registry sees the account as the staked entity. `delay` must be >= 86,400s and
+    ///         msg.value >= the devnet's MIN_STAKE_VALUE for it to count as staked.
+    function stake(uint32 delay) external payable {
+        if (msg.sender != owner) revert NotOwner();
+        if (address(stakingRegistry) == address(0)) revert NoRegistry();
+        stakingRegistry.addStake{value: msg.value}(delay);
+    }
+
     /// @notice VERIFY frame entry point. Reverts (rejecting the tx) unless the submitted frame tx is
     ///         exactly the canonical liquidation for a currently-unhealthy position; otherwise approves.
     /// @dev VERIFY reads the market, feed and frame env. Under ERC-8421 STORAGE-032 the account must be
-    ///      STAKED (see IAccountStaking) for those reads to be allowed during validation; the deploy
-    ///      script stakes it and probe 3 confirms it on chain.
+    ///      STAKED (see IStakingRegistry / stake()) for those reads to be allowed during validation; the
+    ///      deploy script stakes it where a registry is configured, and probe 3 confirms it on chain.
     function verifyLiquidation() external {
         TxView memory v = env.load();
 
