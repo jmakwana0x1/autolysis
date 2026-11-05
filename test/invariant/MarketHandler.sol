@@ -140,6 +140,7 @@ contract MarketHandler is Test {
     /// round, then liquidate it via the account. Ensures the conservation invariants are checked
     /// across real liquidation state transitions (the pure random walk rarely clusters enough drops).
     function crashAndLiquidate(uint256 seed, uint256 dropBps) public {
+        if (posIds.length == 0) openAndFund(100e18, type(uint256).max); // ensure a position exists
         uint256 id = _pos(seed);
         if (id == 0) return;
         dropBps = bound(dropBps, 100, 900); // 1%..9% per round, stays in band (no breaker trip)

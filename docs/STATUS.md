@@ -9,6 +9,8 @@
 
 | 3. Uniswap backstop | Local suites green | `BackstopHook` (v4-core, return-delta on beforeSwap): registered-market liquidations fill 1:1 from the deposits tier, outside swappers and unregistered markets follow the vanilla path matching a no-hook pool to the wei, settle-before-swap (enforced by the unlock), reentrancy guard. Tests cover both currency orderings, pool-manipulation-harmless, and a 10k-run deltas-net-to-zero fuzz. `BaseHook` + CREATE2 salt-mining deploy script. FEEDBACK.md written. |
 
+| 4. Aqua tier | Local suites green | `AutolysisAquaRouter` (our SwapVM redeploy) with a LiquidationGate (fills only when the caller is the hook and the gate is open), oracle pricing (price − base spread + vol add-on; quote() equals the fill), an EIP-1167 clone template allowlist (one code hash covers every maker), maker strategies pulling USDC straight from wallets under a gas stipend, and skip rules for empty / rugged / gas-bomb makers. `BackstopHook` gains the three-tier waterfall (makers → deposits → vanilla curve) with correct oracle-priced v4 deltas. Tests: 8 router unit tests (gate, allowlist, wallet pull, rug/gas-bomb/empty skip, quote==fill), 9 hook tests (waterfall order, tier-2-untouched-when-makers-cover, both currency orders, oracle pricing, pool-manipulation-harmless, 10k deltas-net-to-zero fuzz), and gated router invariants (stranger never moves funds, USDC conserved, gate closed at rest). `SwapVM`/`Aqua` are modeled in `src/aqua`, not vendored. |
+
 ## Running the suites
 
 ```bash

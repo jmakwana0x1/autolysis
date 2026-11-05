@@ -11,15 +11,19 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary, toBeforeSwapDelta} from "v4-cor
 import {Currency} from "v4-core/types/Currency.sol";
 import {CurrencySettler} from "v4-core-test/utils/CurrencySettler.sol";
 import {IERC20Min} from "../interfaces/IERC20Min.sol";
+import {IRoundFeed} from "../interfaces/IRoundFeed.sol";
+import {AutolysisAquaRouter} from "../aqua/AutolysisAquaRouter.sol";
+import {AquaPricing} from "../aqua/AquaPricing.sol";
 
 /// @title BackstopHook
-/// @notice Uniswap v4 hook that backstops Autolysis liquidations. For a registered market's liquidation
-///         swap (flagged in hookData), it fills the swap from the hook's own deposits tier using custom
-///         accounting; for any other swapper it returns ZERO_DELTA so the pool behaves exactly like a
-///         vanilla pool. Guarantees: deltas net to zero; an outside swapper sees a normal pool; an
-///         unregistered caller follows the vanilla path; settle-before-swap; reentrancy is blocked.
-/// @dev Phase 3 fills only from the deposits tier. Phase 4 inserts the Aqua maker waterfall ahead of
-///      deposits (tier 1 makers, tier 2 deposits, tier 3 vanilla curve) in `_fillLiquidation`.
+/// @notice Uniswap v4 hook backstopping Autolysis liquidations with a three-tier waterfall: Aqua makers
+///         first, then the hook's own deposits, then the vanilla curve. Guarantees: deltas net to zero;
+///         an outside swapper / unregistered market sees a normal pool (ZERO_DELTA); settle-before-swap;
+///         reentrancy blocked; tier 2 is only touched when tier 1 cannot cover, tier 3 only when neither
+///         can. The collateral the taker sells is priced in the output currency by the oracle; makers
+///         and deposits fill at that price, and any remainder flows to the concentrated-liquidity curve.
+/// @dev The output currency is the debt token (USDC). The input currency is collateral. Only exact-input
+///      liquidations are backstopped; everything else is ZERO_DELTA.
 contract BackstopHook is BaseHook {
     using CurrencySettler for Currency;
 
@@ -29,10 +33,14 @@ contract BackstopHook is BaseHook {
     }
 
     address public immutable owner;
-    mapping(address => bool) public registeredMarket;
+    IRoundFeed public immutable feed;
+    Currency public immutable debtCurrency; // the output (USDC) side
+    AutolysisAquaRouter public router;
 
-    // Deposits tier: currency balances the hook holds to fill liquidations (settled via ERC-6909 claims).
-    mapping(Currency => uint256) public depositsOf;
+    mapping(address => bool) public registeredMarket;
+    mapping(Currency => uint256) public depositsOf; // house deposits tier, by currency
+    uint256 public makerCollateralOwed; // collateral claims accrued to makers (withdrawable)
+    uint256 public houseCollateral; // collateral claims the house earned via its deposits tier
 
     bool private _entered;
 
@@ -41,10 +49,12 @@ contract BackstopHook is BaseHook {
 
     event MarketRegistered(address indexed market, bool allowed);
     event Deposited(Currency indexed currency, uint256 amount);
-    event BackstopFilled(address indexed market, uint256 amountIn, uint256 amountOut);
+    event Waterfall(address indexed market, uint256 tier1Usdc, uint256 tier2Usdc, uint256 tier3Collateral);
 
-    constructor(IPoolManager manager_, address owner_) BaseHook(manager_) {
+    constructor(IPoolManager manager_, address owner_, IRoundFeed feed_, Currency debtCurrency_) BaseHook(manager_) {
         owner = owner_;
+        feed = feed_;
+        debtCurrency = debtCurrency_;
     }
 
     modifier onlyOwner() {
@@ -70,18 +80,16 @@ contract BackstopHook is BaseHook {
         emit MarketRegistered(market, allowed);
     }
 
-    /// @notice Fund the deposits tier. The hook mints ERC-6909 claims against the manager so it can
-    ///         settle liquidation fills without moving real tokens each time.
+    function setRouter(AutolysisAquaRouter router_) external onlyOwner {
+        router = router_;
+    }
+
     function deposit(Currency currency, uint256 amount) external {
-        // The hook holds raw tokens for the deposits tier and settles fills with burn=false (a real
-        // transfer to the manager), mirroring the v4 custom-curve model.
         IERC20Min(Currency.unwrap(currency)).transferFrom(msg.sender, address(this), amount);
         depositsOf[currency] += amount;
         emit Deposited(currency, amount);
     }
 
-    /// @notice beforeSwap: for a registered-market liquidation, fill from deposits with custom
-    ///         accounting; otherwise ZERO_DELTA (vanilla pool path).
     function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         internal
         override
@@ -89,47 +97,72 @@ contract BackstopHook is BaseHook {
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         HookData memory hd = _decode(hookData);
-        if (!hd.isLiquidation || !registeredMarket[hd.market]) {
-            // Outside swapper / unregistered market: no custom accounting, normal pool.
+        if (!hd.isLiquidation || !registeredMarket[hd.market] || params.amountSpecified >= 0) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // Phase 3 fills exact-input liquidations fully from the deposits tier, 1:1 in currency units
-        // (the venue values collateral at the oracle price before calling, so the pool leg is a
-        // par swap). If deposits cannot cover the whole input, fall through to the vanilla curve so the
-        // delta stays clean; the partial-tier waterfall is Phase 4.
-        if (params.amountSpecified >= 0) {
-            // exact-output liquidations are not used; let the vanilla curve handle them.
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-        }
-        (Currency inputCurrency, Currency outputCurrency, uint256 amount) = _io(key, params);
-        if (amount > depositsOf[outputCurrency]) {
+        (Currency inputCurrency, Currency outputCurrency) =
+            params.zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
+        // Only backstop the collateral->debt direction (output must be the debt currency).
+        if (Currency.unwrap(outputCurrency) != Currency.unwrap(debtCurrency)) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // settle-before-swap: resolve the input leg first (mint ERC-6909 claims for the input the taker
-        // owes, so no real tokens are pulled from the pool's reserves), then settle the output out of the
-        // deposits tier with a real transfer. The input is accounted before the output leaves.
-        inputCurrency.take(manager, address(this), amount, true); // mint claims for the input
-        depositsOf[inputCurrency] += amount; // tracked as claim-backed balance
-        depositsOf[outputCurrency] -= amount;
-        outputCurrency.settle(manager, address(this), amount, false); // real transfer of output to manager
+        uint256 collateralOffered = uint256(-params.amountSpecified);
+        (uint256 consumedCol, uint256 usdcOut) = _waterfall(hd.market, collateralOffered);
+        if (consumedCol == 0) {
+            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
 
-        emit BackstopFilled(hd.market, amount, amount);
+        // settle-before-swap: resolve the input leg as claims (no reserve draw), then settle the USDC we
+        // sourced out to the manager. consumedCol collateral is taken; usdcOut debt token is paid.
+        inputCurrency.take(manager, address(this), consumedCol, true); // mint collateral claims
+        outputCurrency.settle(manager, address(this), usdcOut, false); // real USDC -> manager
 
-        // Fully no-op the concentrated-liquidity swap: specified delta = -amountSpecified, unspecified
-        // = +amountSpecified (mirrors the v4 custom-curve model for an exact-input swap).
-        BeforeSwapDelta delta = toBeforeSwapDelta(int128(-params.amountSpecified), int128(params.amountSpecified));
+        // Any remainder (collateralOffered - consumedCol) flows to the vanilla curve.
+        BeforeSwapDelta delta = toBeforeSwapDelta(int128(int256(consumedCol)), -int128(int256(usdcOut)));
         return (IHooks.beforeSwap.selector, delta, 0);
     }
 
-    function _io(PoolKey calldata key, SwapParams calldata params)
+    /// @dev Three-tier waterfall. Returns collateral consumed by tiers 1+2 and the USDC sourced for it.
+    function _waterfall(address market, uint256 collateralOffered)
         internal
-        pure
-        returns (Currency input, Currency output, uint256 amount)
+        returns (uint256 consumedCol, uint256 usdcOut)
     {
-        (input, output) = params.zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
-        amount = params.amountSpecified < 0 ? uint256(-params.amountSpecified) : uint256(params.amountSpecified);
+        uint256 remaining = collateralOffered;
+        uint256 tier1Usdc;
+        uint256 tier2Usdc;
+
+        // Tier 1: Aqua makers (if a router is set). The router pulls USDC from maker wallets into the
+        // hook and reports the collateral it consumed; that collateral is owed to makers.
+        if (address(router) != address(0)) {
+            router.setGate(true);
+            (uint256 u1, uint256 c1) = router.fill(remaining, address(this));
+            router.setGate(false);
+            if (c1 > remaining) c1 = remaining; // defensive
+            tier1Usdc = u1;
+            makerCollateralOwed += c1;
+            consumedCol += c1;
+            remaining -= c1;
+        }
+
+        // Tier 2: the house deposits tier, only when tier 1 could not cover the whole sale.
+        if (remaining > 0 && depositsOf[debtCurrency] > 0) {
+            uint256 eff = feed.getRound(feed.latestRound()).price; // house fills at the oracle price
+            uint256 capCol = AquaPricing.collateralForUsdc(depositsOf[debtCurrency], eff);
+            uint256 c2 = capCol < remaining ? capCol : remaining;
+            uint256 u2 = AquaPricing.usdcForCollateral(c2, eff);
+            if (u2 > depositsOf[debtCurrency]) u2 = depositsOf[debtCurrency];
+            depositsOf[debtCurrency] -= u2;
+            houseCollateral += c2;
+            tier2Usdc = u2;
+            consumedCol += c2;
+            remaining -= c2;
+        }
+
+        usdcOut = tier1Usdc + tier2Usdc;
+        // Tier 3 is whatever remains (handled by the vanilla curve via the leftover specified amount).
+        emit Waterfall(market, tier1Usdc, tier2Usdc, remaining);
     }
 
     function _decode(bytes calldata hookData) internal pure returns (HookData memory hd) {
