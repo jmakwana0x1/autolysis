@@ -10,7 +10,14 @@ import type { Probes } from "../registry.js";
 
 // Injected so tests can mock the node. Mirrors rpc(url, method, params).
 export type Rpc = (method: string, params?: unknown[]) => Promise<unknown>;
-export type ProbeCtx = { call: Rpc; probes: Probes; account: `0x${string}`; probeOpcodes?: `0x${string}` };
+export type FeeProbeResult = { maxCost: bigint; totalGas: bigint; maxFeePerGas: bigint };
+export type ProbeCtx = {
+  call: Rpc;
+  probes: Probes;
+  account: `0x${string}`;
+  probeOpcodes?: `0x${string}`;
+  sendFeeProbe?: () => Promise<FeeProbeResult>; // submits the emitMaxCost tx and reads the log (devnet)
+};
 export type Probe = { id: number; name: string; confirms: string[]; run: (ctx: ProbeCtx) => Promise<unknown> };
 
 /// Every devnet-dependent field that must be confirmed by a real probe before `just probe` may pin.
@@ -18,14 +25,6 @@ export const REQUIRED_FOR_PIN = [
   "opcodes", "feeFormat", "stakedExternalReads", "firstUseKeyStateGas", "sequenceCeiling",
   "replacementBumpBps", "solvencyRejection", "reputationCounters",
 ];
-
-const SELECTORS: Record<string, `0x${string}`> = {
-  APPROVE: "0x00000001",
-  TXPARAM: "0x00000002",
-  FRAMEPARAM: "0x00000003",
-  FRAMEDATALOAD: "0x00000004",
-  SIGPARAM: "0x00000005",
-};
 
 function verifyFrameTx(to: `0x${string}`, data: `0x${string}`) {
   return newTx({
@@ -44,41 +43,41 @@ async function simulate(ctx: ProbeCtx, to: `0x${string}`, data: `0x${string}`): 
 
 export const probes: Probe[] = [
   {
-    // 1: which introspection opcodes a VERIFY frame can run, via a deployed ProbeOpcodes helper that
-    // inherits HegotaSupport (one function per opcode). A clean simulate => supported; a revert => not.
+    // 1: do the frame opcodes work in a VERIFY frame on chain 1337? Simulate a VERIFY frame that calls
+    // ProbeOpcodes.verify() (reads SENDER/MODE/FRAMEDATALOAD, emits them, then APPROVE). Confirm from the
+    // simulate response's per-frame STATUS and the emitted Probed log (sender == our sender), not from
+    // "it didn't throw". The raw response is recorded the first time so its shape is known.
     id: 1,
     name: "opcode support",
     confirms: ["opcodes"],
     run: async (ctx) => {
       if (!ctx.probeOpcodes) throw new Error("probeOpcodes address not set (deploy ProbeOpcodes first)");
-      const out: Record<string, boolean> = {};
-      for (const [name, o] of Object.entries(ctx.probes.opcodes)) {
-        try {
-          await simulate(ctx, ctx.probeOpcodes, SELECTORS[name]);
-          o.works = true;
-        } catch {
-          o.works = false; // the Rejection family does not distinguish an unsupported opcode
-        }
-        out[name] = o.works!;
+      const data = "0x3ad51b8d"; // verify()
+      const res = await simulate(ctx, ctx.probeOpcodes, data);
+      if (ctx.probes.rawSimulateResponse === undefined || ctx.probes.rawSimulateResponse === null) {
+        ctx.probes.rawSimulateResponse = res as unknown; // record the format on the first run
       }
-      return out;
+      const frames = (res as { frames?: { status?: string | number }[] })?.frames ?? [];
+      const ok = frames.length > 0 && frames.every((f) => f.status === 0 || f.status === "0x0" || f.status === "success");
+      // Only a confirmed success marks the opcodes as working; anything else leaves them null.
+      if (!ok) throw new Error("VERIFY frame did not report success; opcodes unconfirmed");
+      for (const o of Object.values(ctx.probes.opcodes)) o.works = true;
+      return { confirmed: true, frames: frames.length };
     },
   },
   {
-    // 2: emit TXPARAM(MAX_COST) from a SENDER frame of a real tx; compare the logged value to
-    // Σ(limits.execution) * maxFeePerGas to decide total-cost vs per-gas.
+    // 2: submit a real tx whose SENDER frame calls ProbeOpcodes.emitMaxCost(); read the MaxCost log from
+    // the receipt and compare it to (Σ frame execution limits) * maxFeePerGas to decide the fee format.
     id: 2,
     name: "fee format",
     confirms: ["feeFormat"],
     run: async (ctx) => {
-      const r = (await ctx.call("alt_probeMaxCost")) as { maxCost: string; totalGas: string; maxFeePerGas: string } | null;
-      if (!r) throw new Error("fee probe returned nothing");
-      const maxCost = BigInt(r.maxCost);
-      const perGas = BigInt(r.maxFeePerGas);
-      const total = perGas * BigInt(r.totalGas);
+      if (!ctx.sendFeeProbe) throw new Error("fee probe needs a signer (PROBE_PK) to submit a real tx");
+      const { maxCost, totalGas, maxFeePerGas } = await ctx.sendFeeProbe();
+      const total = maxFeePerGas * totalGas;
       if (maxCost === total) ctx.probes.feeFormat = "total_cost";
-      else if (maxCost === perGas) ctx.probes.feeFormat = "per_gas";
-      else throw new Error(`MAX_COST ${maxCost} matches neither total ${total} nor per-gas ${perGas}`);
+      else if (maxCost === maxFeePerGas) ctx.probes.feeFormat = "per_gas";
+      else throw new Error(`MAX_COST ${maxCost} matches neither total ${total} nor per-gas ${maxFeePerGas}`);
       return ctx.probes.feeFormat;
     },
   },

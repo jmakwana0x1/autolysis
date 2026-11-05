@@ -53,6 +53,7 @@ contract Deploy is Script {
         address factory;
         address liquidityRouter;
         address stakingRegistry;
+        address probeOpcodes;
     }
 
     Addrs internal A;
@@ -74,6 +75,7 @@ contract Deploy is Script {
         A.usdc = address(new MockERC20("USD Coin", "USDC", 18));
         A.feed = address(new RoundFeed(msg.sender, 2e18)); // 1 WETH = 2 USDC
         A.frameEnv = deployCode("HegotaFrameEnv.sol:HegotaFrameEnv");
+        A.probeOpcodes = deployCode("ProbeOpcodes.sol:ProbeOpcodes");
         A.account = address(new AutolysisAccount(IFrameEnv(A.frameEnv)));
         A.market = address(new AutolysisMarket(IERC20(A.weth), IERC20(A.usdc), IRoundFeed(A.feed), A.account));
         AutolysisAccount(payable(A.account)).initialize(AutolysisMarket(payable(A.market)), 0.02e18);
@@ -179,7 +181,8 @@ contract Deploy is Script {
         vm.serializeAddress(o, "AutolysisAquaRouter", a.router);
         vm.serializeAddress(o, "MakerFactory", a.factory);
         vm.serializeAddress(o, "PoolModifyLiquidityTest", a.liquidityRouter);
-        string memory json = vm.serializeAddress(o, "StakingRegistry", a.stakingRegistry);
+        vm.serializeAddress(o, "StakingRegistry", a.stakingRegistry);
+        string memory json = vm.serializeAddress(o, "ProbeOpcodes", a.probeOpcodes);
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
     }
 }

@@ -65,5 +65,6 @@
   "probeCell": null,
   "selectorFallback": false,
   "verifyGas": 129389,
-  "validationGasLimit": 1000000
+  "validationGasLimit": 1000000,
+  "rawSimulateResponse": null
 }
