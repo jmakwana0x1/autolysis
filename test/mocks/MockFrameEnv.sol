@@ -17,6 +17,8 @@ contract MockFrameEnv is IFrameEnv {
     uint256 public approveCount;
     /// nonce key => next expected sequence (advances on every APPROVE, success or failure)
     mapping(uint256 => uint256) public sequenceOf;
+    uint256 public storedMaxCost; // TXPARAM MAX_COST, readable without loading every frame
+    bool public failLoad; // test toggle: make load() revert (maxCost must still work)
 
     constructor() {
         SELF = address(this);
@@ -24,6 +26,15 @@ contract MockFrameEnv is IFrameEnv {
 
     function set(TxView memory v) external {
         current = abi.encode(v);
+        storedMaxCost = v.feeParam;
+    }
+
+    function setFailLoad(bool v) external {
+        failLoad = v;
+    }
+
+    function maxCost() external view returns (uint256) {
+        return storedMaxCost;
     }
 
     function clear() external {
@@ -35,6 +46,7 @@ contract MockFrameEnv is IFrameEnv {
     }
 
     function load() external view returns (TxView memory v) {
+        require(!failLoad, "MockFrameEnv: load disabled");
         require(current.length != 0, "MockFrameEnv: no frame tx");
         v = abi.decode(current, (TxView));
     }

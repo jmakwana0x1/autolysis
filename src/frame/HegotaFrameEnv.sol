@@ -57,6 +57,10 @@ contract HegotaFrameEnv is IFrameEnv, HegotaSupport {
         }
     }
 
+    function maxCost() external view returns (uint256) {
+        return txparam(TxParam.MAX_COST);
+    }
+
     function approve(uint256 scope) external {
         // Reached by DELEGATECALL from the account, so APPROVE acts on the account. `scope` is a Scope.
         approve(Scope(scope));

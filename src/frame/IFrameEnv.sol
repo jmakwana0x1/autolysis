@@ -16,6 +16,10 @@ interface IFrameEnv {
     /// @notice Snapshot of the transaction currently being validated / executed.
     function load() external view returns (TxView memory);
 
+    /// @notice MAX_COST (TXPARAM 0x06) alone, without loading every frame. Used by the SENDER frame so
+    ///         the never-revert envelope does not depend on FRAMEPARAM/FRAMEDATALOAD (unverified on 1337).
+    function maxCost() external view returns (uint256);
+
     /// @notice Executes APPROVE(scope). MUST be invoked via DELEGATECALL from the approving account.
     function approve(uint256 scope) external;
 }

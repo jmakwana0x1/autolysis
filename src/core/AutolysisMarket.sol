@@ -48,6 +48,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     uint256 public nextPositionId = 1;
     mapping(uint256 => Position) public positions;
     mapping(uint256 => uint256) public lastLiquidatedRound; // highest round a step used for this position
+    mapping(uint256 => uint256) public lastAttemptRound; // highest round ANY attempt used (success or fail)
 
     uint256 public totalCollateral; // sum of position collateral (accounting invariant anchor)
     uint256 public totalDebt; // sum of position debt
@@ -184,6 +185,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         totalSoldOut += step.collateralToSell;
         pos.liquidations += 1;
         if (roundId > lastLiquidatedRound[positionId]) lastLiquidatedRound[positionId] = roundId;
+        if (roundId > lastAttemptRound[positionId]) lastAttemptRound[positionId] = roundId;
 
         // Surplus proceeds above the debt belong to the borrower, credited to a withdrawable balance (H3).
         uint256 surplus = got - cleared;
@@ -212,9 +214,11 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         emit Liquidated(positionId, roundId, cleared, step.collateralToSell, feeBilled);
     }
 
-    /// @notice Bill a failed attempt in collateral, capped at MAX_COST and MAX_FAILED_GAS_BILL.
-    function billFailedAttempt(uint256 positionId, uint256 cap) external {
+    /// @notice Bill a failed attempt in collateral, capped at MAX_COST and MAX_FAILED_GAS_BILL, and
+    ///         record the attempt's round so the same round cannot be retried (one failure per round).
+    function billFailedAttempt(uint256 positionId, uint256 roundId, uint256 cap) external {
         if (msg.sender != account) revert NotAccount();
+        if (roundId > lastAttemptRound[positionId]) lastAttemptRound[positionId] = roundId;
         _billFeeFromCollateral(positionId, _min(cap, maxFailedGasBill));
     }
 

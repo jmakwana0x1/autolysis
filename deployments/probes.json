@@ -63,5 +63,7 @@
     "EXECUTION_AND_PAYMENT": 3
   },
   "probeCell": null,
-  "selectorFallback": false
+  "selectorFallback": false,
+  "verifyGas": null,
+  "validationGasLimit": null
 }

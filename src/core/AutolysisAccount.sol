@@ -52,6 +52,9 @@ contract AutolysisAccount {
 
     /// @notice VERIFY frame entry point. Reverts (rejecting the tx) unless the submitted frame tx is
     ///         exactly the canonical liquidation for a currently-unhealthy position; otherwise approves.
+    /// @dev VERIFY reads the market, feed and frame env. Under ERC-8421 STORAGE-032 the account must be
+    ///      STAKED (see IAccountStaking) for those reads to be allowed during validation; the deploy
+    ///      script stakes it and probe 3 confirms it on chain.
     function verifyLiquidation() external {
         TxView memory v = env.load();
 
@@ -72,7 +75,7 @@ contract AutolysisAccount {
 
         // Round gate (H1): the cited round must be newer than the last round this position was
         // liquidated at, so a stale round can't be replayed.
-        if (roundId <= market.lastLiquidatedRound(positionId)) revert RoundAlreadyUsed();
+        if (roundId <= market.lastAttemptRound(positionId)) revert RoundAlreadyUsed();
 
         // Economic gate (H1): the position must be unhealthy at BOTH the cited round's price and the
         // latest price. healthFactorAtRound reverts (via checkRoundForVerify, no TIMESTAMP) if the round
@@ -99,13 +102,13 @@ contract AutolysisAccount {
         // The cap is the transaction's MAX_COST (TXPARAM 0x06), read back through the frame env; the
         // market bills min(MAX_COST, FEE_CAP_BPS * collateral sold) on success and min(MAX_COST,
         // MAX_FAILED_GAS_BILL) on failure, so the borrower is never charged more than they signed for.
-        uint256 maxCost = env.load().feeParam;
+        uint256 maxCost = env.maxCost();
         try market.executeLiquidation(positionId, roundId, maxCost) returns (
             uint256 debtRepaid, uint256 collateralSold, uint256 fee
         ) {
             emit LiquidationOk(positionId, debtRepaid, collateralSold, fee);
         } catch {
-            market.billFailedAttempt(positionId, maxCost);
+            market.billFailedAttempt(positionId, roundId, maxCost);
             emit LiquidationFailed(positionId, maxCost);
         }
     }

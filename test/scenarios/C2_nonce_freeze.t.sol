@@ -103,14 +103,17 @@ contract C2NonceFreezeTest is Test {
 
         usdc.mint(address(curve), 1e24); // refill the venue for the next attempt
 
-        // Attempt #2 must use the next sequence (1). It must still approve and liquidate.
+        // Attempt #2 uses the next sequence (1) and a fresh round (N5: the failed round can't be
+        // retried). It must still approve and liquidate -- the firewall must not tie sequence to count.
+        feed.post(1.6e18);
+        uint256 good2 = feed.latestRound();
         env.resetApprovals(address(account));
-        env.set(_tx(good, 1));
+        env.set(_tx(good2, 1));
         vm.prank(address(account));
         account.verifyLiquidation(); // with the sequence-rule bug this reverts (1 != liquidationCount 0)
         assertTrue(env.isApproved(address(account)), "next attempt must approve after a failed one");
         vm.prank(address(account));
-        account.selfLiquidate(posId, good);
+        account.selfLiquidate(posId, good2);
         assertEq(market.liquidationCount(posId), 1, "the next attempt must liquidate");
     }
 }
