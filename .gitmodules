@@ -7,3 +7,6 @@
 [submodule "lib/hegota-support"]
 	path = lib/hegota-support
 	url = https://github.com/forshtat/hegota-support
+[submodule "lib/swap-vm"]
+	path = lib/swap-vm
+	url = https://github.com/1inch/swap-vm

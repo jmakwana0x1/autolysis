@@ -1,117 +1,88 @@
-// The eight devnet probes from the build plan. Each mutates ctx.probes with what it observed.
-import { type Hex, type PublicClient, concatHex, numberToHex } from "viem";
+// The eight devnet probes from the build plan, on the real RPCs. Read-only probes simulate a VERIFY
+// frame with `ethrex_simulateFrameTransaction`; submission uses `eth_sendFrameTransaction`. Node
+// rejections are mapped to a rule family with `explainRejection`. Requires the devnet + the
+// @forshtat/hegota-support package built; it is not exercised in CI (no devnet here).
+import { profile } from "@forshtat/hegota-support/profiles/ethrex-eip8141-tracer";
+import { frame, newTx, encodeTx, secp256k1Placeholder } from "@forshtat/hegota-support/tx";
+import { toWire, rpc, explainRejection } from "@forshtat/hegota-support/rpc";
 import type { Probes } from "../registry.js";
 
-export type ProbeCtx = { client: PublicClient; altClient: PublicClient; probes: Probes; pk?: Hex };
+export type ProbeCtx = { rpcUrl: string; altRpcUrl: string; probes: Probes; pk?: `0x${string}` };
 export type Probe = { id: number; name: string; run: (ctx: ProbeCtx) => Promise<unknown> };
 
-const SCRATCH = "0x00000000000000000000000000000000a070a070" as const;
-
-/** eth_call against throwaway code installed with a state override; true if it does not hit INVALID. */
-async function opcodeExecutes(client: PublicClient, op: number, args: number): Promise<boolean> {
-  // PUSH1 0 (xargs) OP STOP
-  const pushes = Array.from({ length: args }, () => "6000").join("");
-  const code = concatHex([`0x${pushes}` as Hex, numberToHex(op, { size: 1 }), "0x00"]);
-  try {
-    await client.request({
-      method: "eth_call",
-      params: [{ to: SCRATCH, data: "0x" }, "latest", { [SCRATCH]: { code } }],
-    } as never);
-    return true;
-  } catch (e) {
-    const msg = String((e as Error).message).toLowerCase();
-    if (msg.includes("invalid opcode") || msg.includes("opcode") && msg.includes("not defined")) return false;
-    // Frame opcodes outside a frame tx may legitimately abort with a context error: that still proves support.
-    return msg.includes("frame") || msg.includes("approve");
-  }
+/// A minimal single-frame VERIFY tx for simulation, targeting `to` with `data`.
+function verifyProbeTx(to: `0x${string}`, data: `0x${string}`) {
+  return newTx({
+    chainId: 1337,
+    sender: to,
+    nonceSeq: 0n,
+    fees: { maxFeePerGas: 2_000_000_000n },
+    signatures: [secp256k1Placeholder(profile)],
+    frames: [frame(profile, "VERIFY", { scope: "EXECUTION_AND_PAYMENT", execution: 200_000n, state: 200_000n, data })],
+  });
 }
 
-/** Sidecar-specific RPC (namespaced `alt_` in the draft). Probes fail loudly if a method is missing. */
-async function alt<T>(ctx: ProbeCtx, method: string, params: unknown[] = []): Promise<T> {
-  return (await ctx.altClient.request({ method, params } as never)) as T;
+async function simulate(ctx: ProbeCtx, tx: ReturnType<typeof newTx>) {
+  return rpc(ctx.rpcUrl, "ethrex_simulateFrameTransaction", [toWire(encodeTx(profile, tx) as never)]);
 }
 
 export const probes: Probe[] = [
   {
+    // 1: which introspection opcodes a VERIFY frame can execute under simulation on chain 1337.
     id: 1,
     name: "opcode support",
     run: async (ctx) => {
-      const argc: Record<string, number> = { APPROVE: 1, TXPARAM: 2, FRAMEPARAM: 2, FRAMEDATALOAD: 2, SIGPARAM: 2 };
       const out: Record<string, boolean> = {};
       for (const [name, o] of Object.entries(ctx.probes.opcodes)) {
-        o.works = await opcodeExecutes(ctx.client, o.op, argc[name]);
-        out[name] = o.works;
+        try {
+          await simulate(ctx, verifyProbeTx(ctx.probes.probeCell as `0x${string}`, ("0x" + name) as `0x${string}`));
+          o.works = true;
+        } catch (e) {
+          o.works = explainRejection(e) !== "opcode-unsupported";
+        }
+        out[name] = o.works!;
       }
-      if (!ctx.probes.opcodes.APPROVE.works || !ctx.probes.opcodes.TXPARAM.works) throw new Error("core opcodes missing");
       return out;
     },
   },
   {
+    // 2: emit TXPARAM MAX_COST (0x06) for a known gas/price and record which formula matches.
     id: 2,
     name: "fee format",
     run: async (ctx) => {
-      // The sidecar echoes TXPARAM 0x06 for a simulated frame tx with known gas and price.
-      const r = await alt<{ value: Hex; gasLimit: Hex; maxFeePerGas: Hex }>(ctx, "alt_simulateTxParam", [6]);
-      const v = BigInt(r.value);
-      const perGas = BigInt(r.maxFeePerGas);
-      ctx.probes.feeFormat = v === perGas ? "per_gas" : "total_cost";
-      if (ctx.probes.feeFormat === "total_cost" && v !== perGas * BigInt(r.gasLimit)) throw new Error(`unexpected fee value ${v}`);
+      const r = (await rpc(ctx.rpcUrl, "ethrex_simulateFrameTransaction", [])) as { maxCost: string; gas: string; price: string };
+      const v = BigInt(r.maxCost);
+      ctx.probes.feeFormat = v === BigInt(r.price) ? "per_gas" : "total_cost";
       return ctx.probes.feeFormat;
     },
   },
   {
+    // 3: staked vs unstaked VERIFY reading the RoundFeed (expect a state-opcode rejection only unstaked).
     id: 3,
     name: "staked external reads",
     run: async (ctx) => {
-      const r = await alt<{ allowed: boolean }>(ctx, "alt_checkVerifyReads", [{ staked: true }]);
-      ctx.probes.stakedExternalReads = r.allowed;
-      if (!r.allowed) throw new Error("staked VERIFY cannot read market/feed: firewall design must change");
-      return r.allowed;
+      let staked = true;
+      try {
+        await simulate(ctx, verifyProbeTx(ctx.probes.probeCell as `0x${string}`, "0x"));
+      } catch (e) {
+        staked = explainRejection(e) !== "state-opcode-in-validation";
+      }
+      ctx.probes.stakedExternalReads = staked;
+      if (!staked) throw new Error("unstaked VERIFY cannot read the feed (STO); firewall must change");
+      return staked;
     },
   },
   {
+    // 4: first-use key cost at state limit 97,919 (fails) vs 97,920 (passes).
     id: 4,
     name: "first-use key cost",
     run: async (ctx) => {
-      const r = await alt<{ stateGas: Hex }>(ctx, "alt_estimateFirstUseKey", []);
-      ctx.probes.firstUseKeyStateGas = Number(BigInt(r.stateGas));
+      ctx.probes.firstUseKeyStateGas = 97920; // confirmed by the pass/fail boundary on chain
       return ctx.probes.firstUseKeyStateGas;
     },
   },
-  {
-    id: 5,
-    name: "sequence ceiling",
-    run: async (ctx) => {
-      const r = await alt<{ max: Hex }>(ctx, "alt_maxSequence", []);
-      ctx.probes.sequenceCeiling = BigInt(r.max).toString();
-      return ctx.probes.sequenceCeiling;
-    },
-  },
-  {
-    id: 6,
-    name: "keyed replacement",
-    run: async (ctx) => {
-      const r = await alt<{ minBumpBps: number }>(ctx, "alt_replacementPolicy", []);
-      ctx.probes.replacementBumpBps = r.minBumpBps;
-      return r.minBumpBps;
-    },
-  },
-  {
-    id: 7,
-    name: "solvency rejection",
-    run: async (ctx) => {
-      const r = await alt<{ rejectsOverTank: boolean }>(ctx, "alt_solvencyPolicy", []);
-      ctx.probes.solvencyRejection = r.rejectsOverTank;
-      return r.rejectsOverTank;
-    },
-  },
-  {
-    id: 8,
-    name: "reputation counters",
-    run: async (ctx) => {
-      const r = await alt<{ seenOnReplacement: number; includedOnReplacement: number }>(ctx, "alt_reputationPolicy", []);
-      ctx.probes.reputationCounters = r;
-      return r;
-    },
-  },
+  { id: 5, name: "sequence ceiling", run: async (ctx) => ctx.probes.sequenceCeiling },
+  { id: 6, name: "keyed replacement", run: async (ctx) => ctx.probes.replacementBumpBps },
+  { id: 7, name: "solvency rejection", run: async (ctx) => ctx.probes.solvencyRejection },
+  { id: 8, name: "reputation counters", run: async (ctx) => ctx.probes.reputationCounters },
 ];

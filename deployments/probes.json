@@ -61,5 +61,7 @@
     "PAYMENT": 1,
     "EXECUTION": 2,
     "EXECUTION_AND_PAYMENT": 3
-  }
+  },
+  "probeCell": null,
+  "selectorFallback": false
 }

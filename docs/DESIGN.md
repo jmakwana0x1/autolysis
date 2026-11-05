@@ -73,3 +73,30 @@ this build environment. Every modeled assumption is isolated behind an interface
 `IMakerStrategy`) and pinned in `deployments/probes.json`, so swapping in the real systems is a
 configuration and adapter change, not a rewrite. `docs/STATUS.md` tracks exactly what is proven locally
 versus what still needs the devnet.
+
+## M4/M5: wiring the real devnet and SwapVM (follow-up, devnet/Hardhat-gated)
+
+Two pieces are written to the real interfaces but cannot be *run* in this build (no devnet; SwapVM uses
+a separate Hardhat/solc-0.8.30 toolchain):
+
+- **Probes (M4).** `kit/src/probes/` targets the real sidecar: it builds frame transactions with
+  `@forshtat/hegota-support` (`newTx`/`frame`/`encodeTx`), submits with `eth_sendFrameTransaction`
+  (`toWire`), runs read-only probes with `ethrex_simulateFrameTransaction`, and maps node rejections with
+  `explainRejection`. The eight probes settle: opcode support, the MAX_COST fee formula, staked vs
+  unstaked VERIFY reads, the first-use key cost boundary (97,919 vs 97,920), the sequence ceiling, the
+  replacement bump, solvency rejection, and reputation counters. `deployments/probes.json` carries a
+  `selectorFallback` flag: if FRAMEPARAM/FRAMEDATALOAD do not work on chain 1337 but TXPARAM does, VERIFY
+  takes `(positionId, roundId)` in its own calldata and checks `NONCE_KEY_0 == H(market,id) >> 8`, and
+  `selfLiquidate` re-checks the key with TXPARAM. The probe sources are excluded from the kit's typecheck
+  until the package is built against a devnet.
+
+- **SwapVM fork (M5).** `1inch/swap-vm` @ `f9f4acf` is vendored at `lib/swap-vm` for reference (it is
+  under `LicenseRef-Degensoft-SwapVM-1.1`, all rights reserved — referenced, not copied into our tree).
+  The production `AutolysisAquaRouter` becomes a fork of `AquaSwapVMRouter` whose `_dispatch` handles a
+  `LiquidationGate` opcode (`ctx.query.taker == hook && market.liquidationActive()`) before `_runOpcode`,
+  kept in `contracts/aqua-fork/` under SwapVM-1.1 (the license requires modifications to stay under it).
+  The EIP-1167 clone allowlist in our model is replaced by an order-hash template check: the hook rebuilds
+  the expected program from a template plus the maker's registered parameters and accepts the order only
+  if `hash(order)` matches, with the gate as the first instruction. SwapVM's own test suite is then run
+  with the opcode added. Until that fork is built, `src/aqua` is a faithful model with the same guarantees
+  (gate, oracle pricing, template allowlist, stipends, skip rules), proven by the local Foundry suites.

@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "viem": "2.21.54"
+    "viem": "2.21.54",
+    "@forshtat/hegota-support": "file:../lib/hegota-support"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

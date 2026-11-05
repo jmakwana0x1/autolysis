@@ -24,3 +24,27 @@ FOUNDRY_PROFILE=quick forge test   # fast local loop
 cd kit && npx vitest run           # kit unit tests
 cd kit && VECTORS=50000 npx tsx scripts/gen-vectors.mjs   # regenerate full differential vectors
 ```
+
+## Review fixes (Nov 4, second pass)
+
+Worked in the reviewer's order; each item test-first.
+
+| Item | What changed | Verified |
+| --- | --- | --- |
+| C1 | `selfLiquidate` rejects non-self callers | local |
+| C2 | removed the sequence==count freeze; mock models nonce burn | local |
+| C6+H5 | slippage `s` in the step; real constants; insolvency branch | local |
+| C5 | vendored real `hegota-support`; env inherits `HegotaSupport` (owns no opcode bytes); real ids/scopes; dropped TIMESTAMP/expiry; ALLOWED_SCOPE rule | local (enum-matched) |
+| H1 | VERIFY validates the round + both-price health | local |
+| C3+C4+H4 | `V4Venue` drives the pool; hook authorizes on sender+flag; makers/house paid in-fill; market sells through the backstop | local (real v4) |
+| H2 | gas billed in collateral/ETH; USDC tank deleted | local |
+| H3 | surplus to borrower; bad-debt write-off | local |
+| M1 | renamed to `verifyLiquidation` / `selfLiquidate` | local |
+| M2 | hook + router price at the cited round | local |
+| M3 | real ERC-8421 reputation rules in the simulator | local |
+| M4 | probes rewritten to `eth_sendFrameTransaction` / `ethrex_simulateFrameTransaction` / `explainRejection` | **devnet-only (not run here)** |
+| M5 | SwapVM vendored for reference; fork plan + license documented | **Hardhat/devnet-only (not built here)** |
+
+Local suites: `just test` (Foundry unit/fuzz/differential/integration/backstop/aqua + scenarios), the
+stateful invariants, and the kit vitest are all green. M4/M5 need a live devnet and SwapVM's Hardhat
+toolchain to execute.
