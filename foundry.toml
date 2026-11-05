@@ -4,7 +4,7 @@ test = "test"
 script = "script"
 out = "out"
 libs = ["lib"]
-solc = "0.8.26"
+auto_detect_solc = true
 offline = true
 evm_version = "cancun"
 optimizer = true
@@ -25,6 +25,8 @@ remappings = [
   "solmate/=lib/v4-core/lib/solmate/",
   "@openzeppelin/contracts/=lib/v4-core/lib/openzeppelin-contracts/contracts/",
   "v4-core-test/=lib/v4-core/test/",
+  "@forshtat/hegota-support/=lib/hegota-support/",
+  "hegota-support/=lib/hegota-support/contracts/",
 ]
 
 # Pinned dependency commits (also recorded in deployments/pins.json):

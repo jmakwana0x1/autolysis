@@ -29,7 +29,6 @@ const base = {
   verifyGas: 200_000n,
   verifyStateLimit: 150_000n,
   executeGas: 300_000n,
-  expiry: 9_999_999_999n,
 };
 
 describe("Carrier (replacement + tank-aware concurrency)", () => {

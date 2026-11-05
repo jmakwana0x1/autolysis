@@ -1,33 +1,53 @@
 {
   "chainId": 1337,
   "pinned": false,
-  "note": "Values below are the plan's working assumptions. `just probe` overwrites this file with on-chain results and sets pinned=true; `just gen` then regenerates src/generated/ProbeConstants.sol. A mismatch between the two fails `just test` (ProbeConstants.t.sol).",
+  "note": "Pinned to hegota-support Params.sol @ 2377188 and the documented ethrex tracer opcode bytes. `just probe` overwrites this on a devnet and sets pinned=true; test/frame/ProbeConstants.t.sol asserts the generated constants match both this file and the real enums.",
   "probedAt": null,
   "rpc": null,
   "opcodes": {
-    "APPROVE": { "op": 170, "works": null },
-    "TXPARAM": { "op": 176, "works": null },
-    "FRAMEPARAM": { "op": 179, "works": null },
-    "FRAMEDATALOAD": { "op": 180, "works": null },
-    "SIGPARAM": { "op": 182, "works": null }
+    "APPROVE": {
+      "op": 170,
+      "works": null
+    },
+    "TXPARAM": {
+      "op": 176,
+      "works": null
+    },
+    "FRAMEPARAM": {
+      "op": 179,
+      "works": null
+    },
+    "FRAMEDATALOAD": {
+      "op": 177,
+      "works": null
+    },
+    "SIGPARAM": {
+      "op": 180,
+      "works": null
+    }
   },
   "txParams": {
-    "sender": 2,
-    "nonceKeyCount": 3,
-    "nonceKey": 4,
-    "sequence": 5,
-    "fee": 6,
-    "expiry": 7,
-    "frameCount": 8,
-    "currentFrame": 9
+    "NONCE": 1,
+    "SENDER": 2,
+    "MAX_COST": 6,
+    "FRAME_COUNT": 9,
+    "CURRENT_FRAME_INDEX": 10,
+    "STATE_GAS_LEFT": 12,
+    "NONCE_KEY_COUNT": 14,
+    "NONCE_KEYS_HASH": 15,
+    "NONCE_KEY_0": 16
   },
   "frameParams": {
-    "mode": 0,
-    "target": 1,
-    "gasLimit": 2,
-    "stateLimit": 3,
-    "value": 4,
-    "dataSize": 5
+    "RESOLVED_TARGET": 0,
+    "EXECUTION_GAS_LIMIT": 1,
+    "MODE": 2,
+    "FLAGS": 3,
+    "DATA_LENGTH": 4,
+    "STATUS": 5,
+    "ALLOWED_SCOPE": 6,
+    "ATOMIC_BATCH": 7,
+    "VALUE": 8,
+    "STATE_GAS_LIMIT": 9
   },
   "feeFormat": "total_cost",
   "stakedExternalReads": null,
@@ -35,5 +55,11 @@
   "sequenceCeiling": "18446744073709551615",
   "replacementBumpBps": 1000,
   "solvencyRejection": null,
-  "reputationCounters": null
+  "reputationCounters": null,
+  "scopes": {
+    "NONE": 0,
+    "PAYMENT": 1,
+    "EXECUTION": 2,
+    "EXECUTION_AND_PAYMENT": 3
+  }
 }

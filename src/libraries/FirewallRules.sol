@@ -32,7 +32,7 @@ library FirewallRules {
         SECOND_KEY,
         FEE_CAP,
         STATE_BUDGET,
-        EXPIRY,
+        ALLOWED_SCOPE,
         SENDER
     }
 
@@ -44,7 +44,6 @@ library FirewallRules {
         uint256 feeCapTotal; // max total cost (debt units of the devnet gas token), per fee format
         uint256 firstUseStateCost; // ProbeConstants.FIRST_USE_KEY_STATE_GAS when the key is new
         bool keyIsNew; // first use of this nonce key
-        uint256 nowTimestamp;
     }
 
     /// @notice The nonce key for a (market, position): H(market, id) with the top byte cleared.
@@ -64,10 +63,12 @@ library FirewallRules {
         FrameView memory vf = v.frames[0];
         FrameView memory xf = v.frames[1];
 
-        // Frame 0: VERIFY mode, targets the account, calls verify() with empty args.
+        // Frame 0: VERIFY mode, targets the account, calls verify() with empty args, and is allowed to
+        // approve both execution and payment (so the account can self-pay).
         if (vf.mode != FrameTypes.MODE_VERIFY) return Reject.VERIFY_FRAME;
         if (vf.target != e.account) return Reject.VERIFY_FRAME;
         if (vf.data.length != 4 || bytes4(vf.data) != VERIFY_SEL) return Reject.VERIFY_FRAME;
+        if (vf.allowedScope != FrameTypes.SCOPE_EXECUTION_AND_PAYMENT) return Reject.ALLOWED_SCOPE;
 
         // Frame 1: SENDER mode, targets the account.
         if (xf.mode != FrameTypes.MODE_SENDER) return Reject.EXEC_FRAME_MODE;
@@ -96,9 +97,6 @@ library FirewallRules {
 
         // First-use state budget: the VERIFY frame must fund the new-key charge.
         if (e.keyIsNew && vf.stateLimit < e.firstUseStateCost) return Reject.STATE_BUDGET;
-
-        // Expiry present and in the future.
-        if (v.expiry == 0 || v.expiry < e.nowTimestamp) return Reject.EXPIRY;
 
         return Reject.OK;
     }

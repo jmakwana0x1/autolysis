@@ -34,7 +34,6 @@ export class Carrier {
     verifyGas: bigint;
     verifyStateLimit: bigint;
     executeGas: bigint;
-    expiry: bigint;
   }): Promise<{ submitted: boolean; replaced: boolean; reason?: string }> {
     const headroom = await this.cfg.tankHeadroom(params.positionId);
     const existing = this.pending.get(this.key(params.positionId));
@@ -67,7 +66,6 @@ export class Carrier {
       sequence: params.sequence,
       maxFeePerGas: fee,
       maxPriorityFeePerGas: fee,
-      expiry: params.expiry,
       verifyGas: params.verifyGas,
       verifyStateLimit: params.verifyStateLimit,
       executeGas: params.executeGas,

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Regenerates src/generated/ProbeConstants.sol from deployments/probes.json.
-// Kit (TypeScript) code imports deployments/probes.json directly, so both sides share one source.
+// Regenerates src/generated/ProbeConstants.sol from deployments/probes.json. Param ids and scopes
+// mirror hegota-support Params.sol; test/frame/ProbeConstants.t.sol asserts the match against the real
+// enums. Kit code imports deployments/probes.json directly, so both sides share one source.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const p = JSON.parse(readFileSync(join(root, "deployments/probes.json"), "utf8"));
-
 const feeFormat = { total_cost: 0, per_gas: 1 }[p.feeFormat];
 if (feeFormat === undefined) throw new Error(`unknown feeFormat ${p.feeFormat}`);
 
@@ -23,8 +23,9 @@ const lines = [
   `    uint8 internal constant OP_FRAMEPARAM = ${p.opcodes.FRAMEPARAM.op};`,
   `    uint8 internal constant OP_FRAMEDATALOAD = ${p.opcodes.FRAMEDATALOAD.op};`,
   `    uint8 internal constant OP_SIGPARAM = ${p.opcodes.SIGPARAM.op};`,
-  ...Object.entries(p.txParams).map(([k, v]) => `    uint256 internal constant TX_${snake(k)} = ${v};`),
-  ...Object.entries(p.frameParams).map(([k, v]) => `    uint256 internal constant FR_${snake(k)} = ${v};`),
+  ...Object.entries(p.txParams).map(([k, v]) => `    uint256 internal constant TX_${k} = ${v};`),
+  ...Object.entries(p.frameParams).map(([k, v]) => `    uint256 internal constant FR_${k} = ${v};`),
+  ...Object.entries(p.scopes).map(([k, v]) => `    uint256 internal constant SCOPE_${k} = ${v};`),
   `    uint8 internal constant FEE_FORMAT = ${feeFormat};`,
   `    uint256 internal constant FIRST_USE_KEY_STATE_GAS = ${p.firstUseKeyStateGas};`,
   `    uint256 internal constant SEQUENCE_CEILING = ${BigInt(p.sequenceCeiling).toString()};`,
@@ -34,7 +35,3 @@ const lines = [
 ];
 writeFileSync(join(root, "src/generated/ProbeConstants.sol"), lines.join("\n"));
 console.log("wrote src/generated/ProbeConstants.sol");
-
-function snake(s) {
-  return s.replace(/([A-Z])/g, "_$1").toUpperCase();
-}

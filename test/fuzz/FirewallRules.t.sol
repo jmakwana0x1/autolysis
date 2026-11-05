@@ -25,7 +25,6 @@ contract FirewallRulesTest is Test {
         e.feeCapTotal = 1_000_000 gwei;
         e.firstUseStateCost = ProbeConstants.FIRST_USE_KEY_STATE_GAS;
         e.keyIsNew = true;
-        e.nowTimestamp = NOW;
     }
 
     function _canonical() internal pure returns (TxView memory v) {
@@ -34,7 +33,6 @@ contract FirewallRulesTest is Test {
         v.nonceKeys[0] = FirewallRules.nonceKey(MARKET, POS);
         v.sequence = SEQ;
         v.feeParam = 1_000_000 gwei; // total-cost format (matches ProbeConstants default)
-        v.expiry = NOW + 100;
         v.currentFrame = 0;
         v.frames = new FrameView[](2);
         v.frames[0] = FrameView({
@@ -43,6 +41,7 @@ contract FirewallRulesTest is Test {
             gasLimit: 200_000,
             stateLimit: ProbeConstants.FIRST_USE_KEY_STATE_GAS + 50_000,
             value: 0,
+            allowedScope: FrameTypes.SCOPE_EXECUTION_AND_PAYMENT,
             data: abi.encodeWithSelector(FirewallRules.VERIFY_SEL)
         });
         v.frames[1] = FrameView({
@@ -51,6 +50,7 @@ contract FirewallRulesTest is Test {
             gasLimit: 300_000,
             stateLimit: 0,
             value: 0,
+            allowedScope: FrameTypes.SCOPE_NONE,
             data: abi.encodeWithSelector(FirewallRules.EXECUTE_SEL, POS, ROUND)
         });
     }
@@ -102,6 +102,13 @@ contract FirewallRulesTest is Test {
         vm.assume(m != FrameTypes.MODE_VERIFY);
         TxView memory v = _canonical();
         v.frames[0].mode = m;
+        _rejects(v);
+    }
+
+    function test_mut_verifyAllowedScope(uint256 scope) public pure {
+        vm.assume(scope != FrameTypes.SCOPE_EXECUTION_AND_PAYMENT);
+        TxView memory v = _canonical();
+        v.frames[0].allowedScope = scope;
         _rejects(v);
     }
 
@@ -189,19 +196,6 @@ contract FirewallRulesTest is Test {
         sl = bound(sl, 0, ProbeConstants.FIRST_USE_KEY_STATE_GAS - 1);
         TxView memory v = _canonical();
         v.frames[0].stateLimit = sl;
-        _rejects(v);
-    }
-
-    function test_mut_expiryMissing() public pure {
-        TxView memory v = _canonical();
-        v.expiry = 0;
-        _rejects(v);
-    }
-
-    function test_mut_expiryPast(uint256 e) public pure {
-        e = bound(e, 1, NOW - 1);
-        TxView memory v = _canonical();
-        v.expiry = e;
         _rejects(v);
     }
 

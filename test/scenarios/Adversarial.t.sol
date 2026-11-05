@@ -63,7 +63,6 @@ contract AdversarialTest is Test {
         v.nonceKeys[0] = FirewallRules.nonceKey(address(market), posId);
         v.sequence = market.liquidationCount(posId);
         v.feeParam = account.feeCapTotal();
-        v.expiry = block.timestamp + 100;
         v.frames = new FrameView[](2);
         v.frames[0] = FrameView(
             FrameTypes.MODE_VERIFY,
@@ -71,6 +70,7 @@ contract AdversarialTest is Test {
             200_000,
             ProbeConstants.FIRST_USE_KEY_STATE_GAS + 50_000,
             0,
+            FrameTypes.SCOPE_EXECUTION_AND_PAYMENT,
             abi.encodeWithSelector(FirewallRules.VERIFY_SEL)
         );
         v.frames[1] = FrameView(
@@ -79,6 +79,7 @@ contract AdversarialTest is Test {
             300_000,
             0,
             0,
+            FrameTypes.SCOPE_NONE,
             abi.encodeWithSelector(FirewallRules.EXECUTE_SEL, posId, roundId)
         );
     }

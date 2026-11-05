@@ -1,4 +1,7 @@
-// Frame transaction codec for the devnet sidecar draft (EIP-8141 lineage, with keyed nonces and expiry).
+// Frame transaction codec (EIP-8141 / EIP-8250, keyed nonces, per-frame allowed scope). There is NO
+// expiry field (TXPARAM 0x07 is BLOB_COUNT); freshness comes from the round window. NOTE: for the live
+// devnet this hand-rolled encoding is superseded by the hegota-support package (newTx/frame/encodeTx +
+// eth_sendFrameTransaction); kept here for the local carrier/attack unit tests (C5e pending).
 // The field order follows the sidecar draft and is checked by the probes; if the probes disagree,
 // fix this file and the matching Solidity mock together ("mock and reality agree").
 import {
@@ -14,8 +17,9 @@ import {
 
 export const FRAME_TX_TYPE = 0x06;
 export const MODE = { DEFAULT: 0, VERIFY: 1, SENDER: 2 } as const;
+export const SCOPE = { NONE: 0, PAYMENT: 1, EXECUTION: 2, EXECUTION_AND_PAYMENT: 3 } as const;
 
-export type Frame = { mode: number; target: Address; gasLimit: bigint; stateLimit: bigint; value: bigint; data: Hex };
+export type Frame = { mode: number; target: Address; gasLimit: bigint; stateLimit: bigint; value: bigint; allowedScope: number; data: Hex };
 
 export type FrameTx = {
   chainId: number;
@@ -24,7 +28,6 @@ export type FrameTx = {
   sequence: bigint; // the key's current on-chain nonce (read from the devnet), NOT the liquidation count (C2)
   maxPriorityFeePerGas: bigint;
   maxFeePerGas: bigint;
-  expiry: bigint;
   frames: Frame[];
 };
 
@@ -38,8 +41,7 @@ export function serializeFrameTx(tx: FrameTx): Hex {
     q(tx.sequence),
     q(tx.maxPriorityFeePerGas),
     q(tx.maxFeePerGas),
-    q(tx.expiry),
-    tx.frames.map((f) => [q(f.mode), f.target, q(f.gasLimit), q(f.stateLimit), q(f.value), f.data]),
+    tx.frames.map((f) => [q(f.mode), f.target, q(f.gasLimit), q(f.stateLimit), q(f.value), q(f.allowedScope), f.data]),
   ]);
   return concatHex([numberToHex(FRAME_TX_TYPE, { size: 1 }), body]);
 }
@@ -73,7 +75,6 @@ export type CanonicalParams = {
   sequence: bigint;
   maxFeePerGas: bigint;
   maxPriorityFeePerGas: bigint;
-  expiry: bigint;
   verifyGas: bigint;
   verifyStateLimit: bigint;
   executeGas: bigint;
@@ -88,7 +89,6 @@ export function canonicalLiquidationTx(p: CanonicalParams): FrameTx {
     sequence: p.sequence,
     maxPriorityFeePerGas: p.maxPriorityFeePerGas,
     maxFeePerGas: p.maxFeePerGas,
-    expiry: p.expiry,
     frames: [
       {
         mode: MODE.VERIFY,
@@ -96,6 +96,7 @@ export function canonicalLiquidationTx(p: CanonicalParams): FrameTx {
         gasLimit: p.verifyGas,
         stateLimit: p.verifyStateLimit,
         value: 0n,
+        allowedScope: SCOPE.EXECUTION_AND_PAYMENT,
         data: encodeFunctionData({ abi: accountAbi, functionName: "verify" }),
       },
       {
@@ -104,6 +105,7 @@ export function canonicalLiquidationTx(p: CanonicalParams): FrameTx {
         gasLimit: p.executeGas,
         stateLimit: 0n,
         value: 0n,
+        allowedScope: SCOPE.NONE,
         data: encodeFunctionData({ abi: accountAbi, functionName: "execute", args: [p.positionId, p.roundId] }),
       },
     ],

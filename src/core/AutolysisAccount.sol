@@ -64,7 +64,6 @@ contract AutolysisAccount {
         e.feeCapTotal = feeCapTotal;
         e.firstUseStateCost = ProbeConstants.FIRST_USE_KEY_STATE_GAS;
         e.keyIsNew = v.sequence == 0; // first use of the key is sequence 0, not count 0 (C2)
-        e.nowTimestamp = block.timestamp;
 
         FirewallRules.Reject r = FirewallRules.check(v, e);
         if (r != FirewallRules.Reject.OK) revert Rejected(r);
@@ -74,8 +73,8 @@ contract AutolysisAccount {
 
         // APPROVE via DELEGATECALL so ADDRESS stays equal to this account (APPROVE is only valid when
         // the executing address is the frame target).
-        (bool ok,) =
-            address(env).delegatecall(abi.encodeWithSelector(IFrameEnv.approve.selector, FrameTypes.APPROVE_BOTH));
+        (bool ok,) = address(env)
+            .delegatecall(abi.encodeWithSelector(IFrameEnv.approve.selector, FrameTypes.SCOPE_EXECUTION_AND_PAYMENT));
         require(ok, "approve failed");
         emit Approved(positionId, roundId);
     }

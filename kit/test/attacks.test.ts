@@ -12,7 +12,6 @@ const p = {
   sequence: 0n,
   maxFeePerGas: 1_000_000_000n,
   maxPriorityFeePerGas: 1_000_000_000n,
-  expiry: 9_999_999_999n,
   verifyGas: 200_000n,
   verifyStateLimit: 150_000n,
   executeGas: 300_000n,
