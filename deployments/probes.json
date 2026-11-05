@@ -66,5 +66,6 @@
   "selectorFallback": false,
   "verifyGas": 129389,
   "validationGasLimit": 1000000,
-  "rawSimulateResponse": null
+  "rawSimulateResponse": null,
+  "signatureForm": null
 }

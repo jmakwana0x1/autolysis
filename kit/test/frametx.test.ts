@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canonicalLiquidationTx, encodeFrameTx, profile, nonceKeyFor } from "../src/frameTx.js";
+import { canonicalLiquidationTx, encodeFrameTx, profile, nonceKeyFor, signatureEntries } from "../src/frameTx.js";
 import { appendKey, dirtyTopByte, dropVerifyScope, reorderFrames } from "../src/attacks.js";
 import { decodeTx } from "@forshtat/hegota-support/tx";
 import type { Address } from "viem";
@@ -25,6 +25,15 @@ describe("canonical frame tx (real hegota-support encoder)", () => {
     expect(back.nonceKeys[0]).toBe(nonceKeyFor(p.market, p.positionId));
     expect(back.frames.length).toBe(2);
   });
+  it("carries no signature by default (the pitch), with an ARBITRARY fallback available", () => {
+    expect(canonicalLiquidationTx(p).signatures.length).toBe(0);
+    expect(signatureEntries("empty").length).toBe(0);
+    const arb = signatureEntries("arbitrary");
+    expect(arb.length).toBe(1);
+    expect(arb[0].scheme).toBe(0); // ARBITRARY
+    expect(arb[0].signature).toBe("0x");
+  });
+
   it("the VERIFY frame carries the EXECUTION_AND_PAYMENT scope in its flags", () => {
     const tx = canonicalLiquidationTx(p);
     expect(tx.frames[0].flags & 3).toBe(3); // scope bits = 3

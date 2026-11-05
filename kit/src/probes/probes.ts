@@ -17,12 +17,13 @@ export type ProbeCtx = {
   account: `0x${string}`;
   probeOpcodes?: `0x${string}`;
   sendFeeProbe?: () => Promise<FeeProbeResult>; // submits the emitMaxCost tx and reads the log (devnet)
+  trySignatureForm?: (form: "empty" | "arbitrary") => Promise<boolean>; // submits a canonical tx, true if admitted
 };
 export type Probe = { id: number; name: string; confirms: string[]; run: (ctx: ProbeCtx) => Promise<unknown> };
 
 /// Every devnet-dependent field that must be confirmed by a real probe before `just probe` may pin.
 export const REQUIRED_FOR_PIN = [
-  "opcodes", "feeFormat", "stakedExternalReads", "firstUseKeyStateGas", "sequenceCeiling",
+  "opcodes", "feeFormat", "stakedExternalReads", "signatureForm", "firstUseKeyStateGas", "sequenceCeiling",
   "replacementBumpBps", "solvencyRejection", "reputationCounters",
 ];
 
@@ -102,7 +103,22 @@ export const probes: Probe[] = [
       return ctx.probes.stakedExternalReads;
     },
   },
-  // Probes 4-8 (first-use key cost, sequence ceiling, keyed replacement, solvency, reputation) are not
+  {
+    // 4 (R4): which signature form the alt-mempool admits. The pitch is "no signature" (empty list);
+    // if that is rejected the kit falls back to a single ARBITRARY entry. Submit the canonical tx with
+    // an empty list; on an invalid-signature rejection, submit with ARBITRARY; record which was admitted.
+    id: 4,
+    name: "signature form",
+    confirms: ["signatureForm"],
+    run: async (ctx) => {
+      if (!ctx.trySignatureForm) throw new Error("signature probe needs a signer (PROBE_PK)");
+      if (await ctx.trySignatureForm("empty")) ctx.probes.signatureForm = "empty";
+      else if (await ctx.trySignatureForm("arbitrary")) ctx.probes.signatureForm = "arbitrary";
+      else throw new Error("neither empty nor ARBITRARY signature was admitted");
+      return ctx.probes.signatureForm;
+    },
+  },
+  // Probes 5-8 (first-use key cost, sequence ceiling, keyed replacement, solvency, reputation) are not
   // implemented until each sends a real transaction and reads a real result. Their fields stay null and
   // the run cannot pin (see `allRequiredPinned`).
 ];

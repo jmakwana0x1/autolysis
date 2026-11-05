@@ -33,9 +33,7 @@ contract ProbeOpcodes is HegotaSupport {
 
     /// @notice A VERIFY-frame body: read three params, emit them, then APPROVE both scopes.
     function verify() external {
-        emit Probed(
-            address(uint160(txparam(TxParam.SENDER))), frameparam(0, FrameParam.MODE), framedataload(0, 1)
-        );
+        emit Probed(address(uint160(txparam(TxParam.SENDER))), frameparam(0, FrameParam.MODE), framedataload(0, 1));
         approve(Scope.EXECUTION_AND_PAYMENT);
     }
 }
