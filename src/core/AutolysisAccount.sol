@@ -28,12 +28,32 @@ contract AutolysisAccount {
     /// ERC-8421 staking registry; VERIFY may read outside contracts only when this account is staked.
     IStakingRegistry public stakingRegistry;
 
+    /// W1.5 fallback: when true, VERIFY reads the round/health gate from this account's OWN storage
+    /// (a snapshot pushed in a prior SENDER-frame tx, where cross-contract reads are allowed) instead
+    /// of calling into the market during validation. This keeps VERIFY to tx.sender storage only, so
+    /// it needs no ERC-8421 STORAGE-032 staking to read the market/feed. Off by default: the staked
+    /// path (direct market reads) is the primary design; this is for devnets without staked reads.
+    bool public storageOnlyVerify;
+
+    /// Round/health snapshot for storage-only VERIFY. Written by `pushVerifySnapshot` outside VERIFY.
+    struct VerifySnapshot {
+        bool set;
+        uint256 roundId; // the round the snapshot was taken at
+        uint256 lastAttemptRound; // market.lastAttemptRound(positionId) at snapshot time
+        uint256 healthAtRound; // market.healthFactorAtRound(positionId, roundId)
+        uint256 healthLatest; // market.healthFactor(positionId)
+    }
+
+    mapping(uint256 positionId => VerifySnapshot) public verifySnapshotOf;
+
     error NotOwner();
     error NotSelf();
     error Rejected(FirewallRules.Reject reason);
     error RoundAlreadyUsed();
     error NotUnhealthy();
     error NoRegistry();
+    error NoSnapshot();
+    error SnapshotRoundMismatch();
 
     event Approved(uint256 positionId, uint256 roundId);
     event LiquidationOk(uint256 indexed positionId, uint256 debtRepaid, uint256 collateralSold, uint256 fee);
@@ -58,6 +78,33 @@ contract AutolysisAccount {
     function setStakingRegistry(IStakingRegistry registry) external {
         if (msg.sender != owner) revert NotOwner();
         stakingRegistry = registry;
+    }
+
+    /// @notice Toggle the storage-only VERIFY fallback (W1.5). When on, VERIFY uses the snapshot in
+    ///         this account's own storage for the round/health gate instead of calling the market.
+    function setStorageOnlyVerify(bool on) external {
+        if (msg.sender != owner) revert NotOwner();
+        storageOnlyVerify = on;
+    }
+
+    /// @notice Push the round/health snapshot VERIFY will read in storage-only mode. Called OUTSIDE the
+    ///         VERIFY frame (e.g. a SENDER-frame tx, where cross-contract reads are permitted), so the
+    ///         market reads happen here, not during validation. Reverts if the position is not actually
+    ///         unhealthy, so a snapshot can never approve a healthy position.
+    /// @dev Anyone may push: the values are read live from the market/feed here, so the pusher cannot
+    ///      forge them, and the round gate + both health gates are re-checked in VERIFY against the
+    ///      snapshot. Reading the market here is a normal external call, not a VERIFY-time read.
+    function pushVerifySnapshot(uint256 positionId, uint256 roundId) external {
+        uint256 lastAttempt = market.lastAttemptRound(positionId);
+        uint256 hAtRound = market.healthFactorAtRound(positionId, roundId);
+        uint256 hLatest = market.healthFactor(positionId);
+        verifySnapshotOf[positionId] = VerifySnapshot({
+            set: true,
+            roundId: roundId,
+            lastAttemptRound: lastAttempt,
+            healthAtRound: hAtRound,
+            healthLatest: hLatest
+        });
     }
 
     /// @notice Stake this account in the ERC-8421 registry so VERIFY may read the market and feed and
@@ -93,16 +140,15 @@ contract AutolysisAccount {
         FirewallRules.Reject r = FirewallRules.check(v, e);
         if (r != FirewallRules.Reject.OK) revert Rejected(r);
 
-        // Round gate (H1): the cited round must be newer than the last round this position was
-        // liquidated at, so a stale round can't be replayed.
-        if (roundId <= market.lastAttemptRound(positionId)) revert RoundAlreadyUsed();
-
-        // Economic gate (H1): the position must be unhealthy at BOTH the cited round's price and the
-        // latest price. healthFactorAtRound reverts (via checkRoundForVerify, no TIMESTAMP) if the round
-        // is outside the window / band / breaker-pending, so a bad round is rejected here in VERIFY, not
-        // paid for and failed in execution.
-        if (market.healthFactorAtRound(positionId, roundId) >= 1e18) revert NotUnhealthy();
-        if (market.healthFactor(positionId) >= 1e18) revert NotUnhealthy();
+        // Round + economic gate (H1). Two ways to source it:
+        //  - staked path (default): read the market/feed directly in VERIFY (needs STORAGE-032 staking);
+        //  - storage-only path (W1.5): read a snapshot from this account's own storage, written outside
+        //    VERIFY, so validation touches no outside contract and needs no staked read.
+        if (storageOnlyVerify) {
+            _gateFromSnapshot(positionId, roundId);
+        } else {
+            _gateFromMarket(positionId, roundId);
+        }
 
         // APPROVE via DELEGATECALL so ADDRESS stays equal to this account (APPROVE is only valid when
         // the executing address is the frame target).
@@ -136,6 +182,30 @@ contract AutolysisAccount {
     /// @notice The account holds ETH to pay for its own frame transactions; the market funds it from
     ///         the liquidated position's collateral (H2).
     receive() external payable {}
+
+    /// Staked path: round gate + both health gates read live from the market (cross-contract reads).
+    function _gateFromMarket(uint256 positionId, uint256 roundId) internal view {
+        // The cited round must be newer than the last round this position was liquidated at, so a
+        // stale round can't be replayed.
+        if (roundId <= market.lastAttemptRound(positionId)) revert RoundAlreadyUsed();
+        // The position must be unhealthy at BOTH the cited round's price and the latest price.
+        // healthFactorAtRound reverts (via checkRoundForVerify, no TIMESTAMP) if the round is outside
+        // the window / band / breaker-pending, so a bad round is rejected here in VERIFY.
+        if (market.healthFactorAtRound(positionId, roundId) >= 1e18) revert NotUnhealthy();
+        if (market.healthFactor(positionId) >= 1e18) revert NotUnhealthy();
+    }
+
+    /// Storage-only path (W1.5): same gates, read from the snapshot in this account's own storage. No
+    /// outside contract is touched, so VERIFY needs no staked read. The snapshot was validated against
+    /// the live market when `pushVerifySnapshot` wrote it, and it must be for exactly this round.
+    function _gateFromSnapshot(uint256 positionId, uint256 roundId) internal view {
+        VerifySnapshot storage s = verifySnapshotOf[positionId];
+        if (!s.set) revert NoSnapshot();
+        if (s.roundId != roundId) revert SnapshotRoundMismatch();
+        if (roundId <= s.lastAttemptRound) revert RoundAlreadyUsed();
+        if (s.healthAtRound >= 1e18) revert NotUnhealthy();
+        if (s.healthLatest >= 1e18) revert NotUnhealthy();
+    }
 
     function _decodeExecuteArgs(TxView memory v) internal pure returns (uint256 positionId, uint256 roundId) {
         // The execute frame is frame 1 in the canonical shape; guard length before decoding.
