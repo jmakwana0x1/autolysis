@@ -25,17 +25,20 @@ contract DifferentialTest is Test {
         uint256[] memory lt = vm.parseJsonUintArray(json, ".lt");
         uint256[] memory d = vm.parseJsonUintArray(json, ".d");
         uint256[] memory target = vm.parseJsonUintArray(json, ".target");
+        uint256[] memory slip = vm.parseJsonUintArray(json, ".s");
         uint256[] memory hf = vm.parseJsonUintArray(json, ".hf");
         uint256[] memory cf = vm.parseJsonUintArray(json, ".cf");
         uint256[] memory debt = vm.parseJsonUintArray(json, ".debt");
         uint256[] memory sell = vm.parseJsonUintArray(json, ".sell");
+        uint256[] memory minOut = vm.parseJsonUintArray(json, ".minOut");
 
         for (uint256 i; i < cap; ++i) {
             assertEq(LiquidationMath.healthFactor(c[i], p[i], lt[i], d[i]), hf[i], "hf mismatch");
             assertEq(LiquidationMath.closeFactor(hf[i]), cf[i], "cf mismatch");
-            LiquidationMath.Step memory s = LiquidationMath.computeStep(c[i], p[i], lt[i], d[i], target[i]);
+            LiquidationMath.Step memory s = LiquidationMath.computeStep(c[i], p[i], lt[i], d[i], target[i], slip[i]);
             assertEq(s.debtToRepay, debt[i], "debt mismatch");
             assertEq(s.collateralToSell, sell[i], "sell mismatch");
+            assertEq(s.minOut, minOut[i], "minOut mismatch");
         }
     }
 }

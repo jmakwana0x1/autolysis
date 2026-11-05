@@ -26,19 +26,21 @@ function randRange(lo, hi) {
   return lo + (r % span);
 }
 
-const cols = { c: [], p: [], lt: [], d: [], target: [], hf: [], cf: [], debt: [], sell: [] };
+const cols = { c: [], p: [], lt: [], d: [], target: [], s: [], hf: [], cf: [], debt: [], sell: [], minOut: [] };
 for (let i = 0; i < N; i++) {
   const c = randRange(1000000n, 10n ** 30n);
   const p = randRange(1000000n, 10n ** 30n);
-  const lt = randRange(5n * 10n ** 17n, 95n * 10n ** 16n);
+  const lt = randRange(5n * 10n ** 17n, 90n * 10n ** 16n);
   const d = randRange(1000000n, 10n ** 30n);
-  const target = randRange(95n * 10n ** 16n, 105n * 10n ** 16n);
+  const target = randRange(101n * 10n ** 16n, 110n * 10n ** 16n);
+  const sl = randRange(0n, 3n * 10n ** 16n); // 0..3% haircut
   const hf = healthFactor(c, p, lt, d);
-  const step = computeStep(c, p, lt, d, target);
+  const step = computeStep(c, p, lt, d, target, sl);
   cols.c.push(c.toString()); cols.p.push(p.toString()); cols.lt.push(lt.toString());
-  cols.d.push(d.toString()); cols.target.push(target.toString());
+  cols.d.push(d.toString()); cols.target.push(target.toString()); cols.s.push(sl.toString());
   cols.hf.push(hf.toString()); cols.cf.push(closeFactor(hf).toString());
   cols.debt.push(step.debtToRepay.toString()); cols.sell.push(step.collateralToSell.toString());
+  cols.minOut.push(step.minOut.toString());
 }
 mkdirSync(join(root, "test/vectors"), { recursive: true });
 writeFileSync(join(root, "test/vectors/math.json"), JSON.stringify({ count: N, ...cols }));

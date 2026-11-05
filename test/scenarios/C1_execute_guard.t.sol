@@ -27,7 +27,9 @@ contract C1ExecuteGuardTest is Test {
         feed = new RoundFeed(address(this), 2e18);
         MockFrameEnv env = new MockFrameEnv();
         account = new AutolysisAccount(env);
-        market = new AutolysisMarket(IERC20(address(col)), IERC20(address(usdc)), IRoundFeed(address(feed)), address(account));
+        market = new AutolysisMarket(
+            IERC20(address(col)), IERC20(address(usdc)), IRoundFeed(address(feed)), address(account)
+        );
         account.initialize(market, 0.01e18);
         MockCurve curve = new MockCurve(IERC20(address(col)), IERC20(address(usdc)), IRoundFeed(address(feed)));
         market.setVenue(ISwapVenue(address(curve)));

@@ -34,7 +34,9 @@ contract C2NonceFreezeTest is Test {
         feed = new RoundFeed(address(this), 2e18);
         env = new MockFrameEnv();
         account = new AutolysisAccount(env);
-        market = new AutolysisMarket(IERC20(address(col)), IERC20(address(usdc)), IRoundFeed(address(feed)), address(account));
+        market = new AutolysisMarket(
+            IERC20(address(col)), IERC20(address(usdc)), IRoundFeed(address(feed)), address(account)
+        );
         account.initialize(market, 0.01e18);
         curve = new MockCurve(IERC20(address(col)), IERC20(address(usdc)), IRoundFeed(address(feed)));
         market.setVenue(ISwapVenue(address(curve)));
@@ -62,8 +64,22 @@ contract C2NonceFreezeTest is Test {
         v.feeParam = account.feeCapTotal();
         v.expiry = block.timestamp + 100;
         v.frames = new FrameView[](2);
-        v.frames[0] = FrameView(FrameTypes.MODE_VERIFY, address(account), 200_000, ProbeConstants.FIRST_USE_KEY_STATE_GAS + 50_000, 0, abi.encodeWithSelector(FirewallRules.VERIFY_SEL));
-        v.frames[1] = FrameView(FrameTypes.MODE_SENDER, address(account), 300_000, 0, 0, abi.encodeWithSelector(FirewallRules.EXECUTE_SEL, posId, roundId));
+        v.frames[0] = FrameView(
+            FrameTypes.MODE_VERIFY,
+            address(account),
+            200_000,
+            ProbeConstants.FIRST_USE_KEY_STATE_GAS + 50_000,
+            0,
+            abi.encodeWithSelector(FirewallRules.VERIFY_SEL)
+        );
+        v.frames[1] = FrameView(
+            FrameTypes.MODE_SENDER,
+            address(account),
+            300_000,
+            0,
+            0,
+            abi.encodeWithSelector(FirewallRules.EXECUTE_SEL, posId, roundId)
+        );
     }
 
     function test_failedAttemptDoesNotFreezePosition() public {

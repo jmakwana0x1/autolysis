@@ -12,7 +12,7 @@ contract MockCurve is ISwapVenue {
     IERC20 public immutable collateral;
     IERC20 public immutable debt;
     IRoundFeed public immutable feed;
-    uint256 public haircutBps;
+    uint256 public haircutWad; // sale haircut as a WAD fraction (0.01e18 == 1%)
 
     constructor(IERC20 collateral_, IERC20 debt_, IRoundFeed feed_) {
         collateral = collateral_;
@@ -20,14 +20,18 @@ contract MockCurve is ISwapVenue {
         feed = feed_;
     }
 
+    /// Set the haircut in basis points (50 == 0.5%); stored as WAD.
     function setHaircut(uint256 bps) external {
-        haircutBps = bps;
+        haircutWad = bps * WAD / 10_000;
     }
 
     function sellCollateral(uint256 collateralIn, uint256 minDebtOut) external returns (uint256 debtOut) {
-        // Collateral already transferred in (settle-before-swap).
+        // Collateral already transferred in (settle-before-swap). Model a venue charging exactly
+        // `haircutWad`, flooring the output the same way the step's minOut does, so a haircut up to the
+        // priced slippage clears minOut to the wei.
         uint256 price = feed.getRound(feed.latestRound()).price;
-        debtOut = (collateralIn * price / WAD) * (10_000 - haircutBps) / 10_000;
+        uint256 effPrice = price * (WAD - haircutWad) / WAD;
+        debtOut = collateralIn * effPrice / WAD;
         require(debtOut >= minDebtOut, "slippage");
         debt.transfer(msg.sender, debtOut);
     }

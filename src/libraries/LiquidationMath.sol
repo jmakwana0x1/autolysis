@@ -39,8 +39,10 @@ library LiquidationMath {
     }
 
     struct Step {
-        uint256 debtToRepay; // debt units, rounded down (<= eligible)
-        uint256 collateralToSell; // collateral units, rounded up (protocol-favoring)
+        uint256 debtToRepay; // debt the step intends to clear (reduced by USDC actually received)
+        uint256 collateralToSell; // collateral units to sell (rounded up to cover the sale at the haircut)
+        uint256 minOut; // minimum debt token out the venue must return (floor of the haircut price)
+        bool insolvent; // true when the position is bad debt (HF <= L/(1-s)): sell everything
     }
 
     /// @notice Collateral to sell to repay `debtToRepay` at `price`, no bonus (self-liquidation). Rounds up.
@@ -49,49 +51,74 @@ library LiquidationMath {
         return Math.mulDivUp(debtToRepay, WAD, price);
     }
 
-    /// @notice The step for an unhealthy position: repay the minimum to reach targetHf, capped at
-    ///         closeFactor*debt and at what the position can cover.
-    function computeStep(uint256 collateral, uint256 price, uint256 liqThreshold, uint256 debt, uint256 targetHf)
-        internal
-        pure
-        returns (Step memory s)
-    {
-        uint256 hf = healthFactor(collateral, price, liqThreshold, debt);
-        if (hf >= HF_RAMP_TOP || debt == 0) return s;
-
-        uint256 eligible = Math.mulDiv(debt, closeFactor(hf), WAD);
-        uint256 repayForTarget = _repayToReachTarget(collateral, price, liqThreshold, debt, targetHf);
-
-        uint256 repay = repayForTarget < eligible ? repayForTarget : eligible;
-        if (repay > debt) repay = debt;
-
-        // The market must obtain enough USDC to clear `repay`, so collateral sold is rounded UP to
-        // cover it (protocol-favoring: the borrower sells a hair more, never a hair less). Because a
-        // liquidatable position operates over-collateralized by value (V > D, i.e. HF > liqThreshold),
-        // the debt cleared per collateral unit (the price) exceeds the position's average, so the step
-        // raises the health factor; the only erosion is sub-wei rounding, absorbed by that margin.
-        s.debtToRepay = repay;
-        s.collateralToSell = collateralForDebt(repay, price); // ceil
-        if (s.collateralToSell > collateral) {
-            s.collateralToSell = collateral;
-            s.debtToRepay = Math.mulDiv(collateral, price, WAD); // only what the capped collateral covers
-        }
+    /// @notice Effective sale price after the slippage/haircut `s` (WAD): price * (1 - s).
+    function effectivePrice(uint256 price, uint256 s) internal pure returns (uint256) {
+        return Math.mulDiv(price, WAD - s, WAD);
     }
 
-    /// @dev Debt x to repay so HF(C - x/price, D - x) >= targetHf, closed form, rounded UP.
+    /// @notice The step for an unhealthy position, accounting for a sale haircut `s` (WAD). Repays the
+    ///         minimum to reach targetHf, capped at closeFactor*debt and at what the position can cover,
+    ///         and sells collateral at the haircut price so a real venue (pool fee, maker/hook spread)
+    ///         still clears `minOut`. When the position is underwater past L/(1-s) it is bad debt: the
+    ///         step sells all collateral and flags `insolvent` for the market to record.
+    function computeStep(
+        uint256 collateral,
+        uint256 price,
+        uint256 liqThreshold,
+        uint256 debt,
+        uint256 targetHf,
+        uint256 s
+    ) internal pure returns (Step memory step) {
+        if (price == 0) revert TargetUnreachable();
+        uint256 hf = healthFactor(collateral, price, liqThreshold, debt);
+        if (hf >= HF_RAMP_TOP || debt == 0) return step;
+
+        uint256 ps = effectivePrice(price, s); // haircut price
+        // Insolvency threshold HF <= L/(1-s): below it no fair-value sale can reach the target, so the
+        // close factor is 100% and the whole position is wound down.
+        uint256 insolvencyHf = Math.mulDiv(liqThreshold, WAD, WAD - s);
+        if (hf <= insolvencyHf) {
+            step.collateralToSell = collateral;
+            step.minOut = Math.mulDiv(collateral, ps, WAD);
+            step.debtToRepay = step.minOut < debt ? step.minOut : debt; // can't clear more than owed
+            step.insolvent = step.debtToRepay < debt; // bad debt if the sale can't cover the debt
+            return step;
+        }
+
+        uint256 eligible = Math.mulDiv(debt, closeFactor(hf), WAD);
+        uint256 repay = _repayToReachTarget(collateral, price, liqThreshold, debt, targetHf, s);
+        if (repay > eligible) repay = eligible;
+        if (repay > debt) repay = debt;
+
+        // Sell collateral at the haircut price, rounded up so the sale covers `repay`; minOut floors it.
+        uint256 x = Math.mulDivUp(repay, WAD, ps);
+        if (x > collateral) {
+            x = collateral;
+            repay = Math.mulDiv(x, ps, WAD); // capped collateral only covers this much
+        }
+        step.collateralToSell = x;
+        step.minOut = Math.mulDiv(x, ps, WAD);
+        step.debtToRepay = repay;
+    }
+
+    /// @dev Debt r to repay so HF after selling r/(P(1-s)) collateral reaches targetHf:
+    ///      r = (T*D - C*P*L) / (T - L/(1-s)). Requires T*(1-s) > L (caller guards via the insolvency
+    ///      branch). Rounded up so the target is met.
     function _repayToReachTarget(
         uint256 collateral,
         uint256 price,
         uint256 liqThreshold,
         uint256 debt,
-        uint256 targetHf
+        uint256 targetHf,
+        uint256 s
     ) private pure returns (uint256) {
-        uint256 cv = Math.mulDiv(Math.mulDiv(collateral, price, WAD), liqThreshold, WAD);
-        if (targetHf <= liqThreshold) return debt;
-        uint256 rhs = Math.mulDiv(targetHf, debt, WAD);
-        if (rhs <= cv) return 0;
-        uint256 num = rhs - cv;
-        uint256 denom = targetHf - liqThreshold;
+        uint256 weightedV = Math.mulDiv(Math.mulDiv(collateral, price, WAD), liqThreshold, WAD); // C*P*L
+        uint256 td = Math.mulDiv(targetHf, debt, WAD); // T*D
+        if (td <= weightedV) return 0; // already at/above target
+        uint256 num = td - weightedV;
+        uint256 lOverOneMinusS = Math.mulDiv(liqThreshold, WAD, WAD - s); // L/(1-s), WAD
+        // denominator T - L/(1-s) is positive here because the insolvency branch handled hf <= L/(1-s)
+        uint256 denom = targetHf - lOverOneMinusS;
         return Math.mulDivUp(num, WAD, denom);
     }
 }

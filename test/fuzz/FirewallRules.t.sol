@@ -154,7 +154,6 @@ contract FirewallRulesTest is Test {
         _rejects(v);
     }
 
-
     function test_mut_keyValue(uint256 x) public pure {
         uint256 good = FirewallRules.nonceKey(MARKET, POS);
         vm.assume(x != good && x >> 248 == 0);

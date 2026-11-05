@@ -35,8 +35,10 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     address public immutable account; // the only address allowed to liquidate
     address public owner; // governance: sets venue, liqThreshold
 
-    uint256 public liqThreshold = 0.9e18; // WAD
-    uint256 public targetHf = 1.01e18; // step targets just above 1.0
+    uint256 public liqThreshold = 0.8e18; // L (WAD)
+    uint256 public targetHf = 1.05e18; // T (WAD)
+    uint256 public slippage = 0.01e18; // s: assumed sale haircut the step prices against (WAD)
+    uint256 public constant CLASSIC_THRESHOLD = 0.95e18; // for the classic-market comparison
     uint256 public feeCap = 0.01e18; // max fee billed per attempt, in debt token
 
     uint256 public nextPositionId = 1;
@@ -85,6 +87,10 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         liqThreshold = lt;
         targetHf = target;
         feeCap = cap;
+    }
+
+    function setSlippage(uint256 s) external onlyOwner {
+        slippage = s;
     }
 
     // --- position lifecycle ---
@@ -159,11 +165,11 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         uint256 price = feed.priceForLiquidation(roundId); // reverts if out of band / breaker pending
 
         LiquidationMath.Step memory step =
-            LiquidationMath.computeStep(pos.collateral, price, liqThreshold, pos.debt, targetHf);
-        if (step.debtToRepay == 0) revert Healthy();
+            LiquidationMath.computeStep(pos.collateral, price, liqThreshold, pos.debt, targetHf, slippage);
+        if (step.collateralToSell == 0) revert Healthy();
 
-        // minOut favors the protocol: require at least the debt we intend to repay, in debt token.
-        uint256 minOut = step.debtToRepay;
+        // minOut is the floor of the haircut sale, so a venue with a real fee/spread still clears it.
+        uint256 minOut = step.minOut;
 
         // settle-before-swap: move collateral to the venue first, then swap.
         collateralToken.transfer(address(venue), step.collateralToSell);

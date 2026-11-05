@@ -95,7 +95,6 @@ contract MarketInvariantTest is Test {
         assertEq(handler.strangerExecuteBilled(), 0, "stranger execute billed the tank");
     }
 
-
     /// Collateral only ever leaves a position through an accounted liquidation sale, so the market's
     /// sold-out total is monotonic non-decreasing. A stranger-driven sale would be unaccounted; the
     /// stranger path is also asserted to always revert in afterInvariant.
