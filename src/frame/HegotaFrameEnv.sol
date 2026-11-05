@@ -122,5 +122,4 @@ contract HegotaFrameEnv is IFrameEnv {
         if (!ok || ret.length < 32) revert CellFailed(cell, a, b);
         out = abi.decode(ret, (uint256));
     }
-
 }
