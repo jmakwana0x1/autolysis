@@ -1,17 +1,33 @@
-// The eight devnet probes from the build plan, on the real RPCs. Read-only probes simulate a VERIFY
-// frame with `ethrex_simulateFrameTransaction`; submission uses `eth_sendFrameTransaction`. Node
-// rejections are mapped to a rule family with `explainRejection`. Requires the devnet + the
-// @forshtat/hegota-support package built; it is not exercised in CI (no devnet here).
+// The devnet probes, on the real RPCs. A probe either sends/simulates a real transaction and records a
+// real result, or it does not run and leaves its field `null` (never an assumption). Read-only probes
+// use `ethrex_simulateFrameTransaction`; submissions use `eth_sendFrameTransaction`. Rejections are
+// classified with `explainRejection`. Requires the devnet; not exercised in CI (no devnet here), but
+// typechecked against the built @forshtat/hegota-support package.
 import { profile } from "@forshtat/hegota-support/profiles/ethrex-eip8141-tracer";
 import { frame, newTx, encodeTx, secp256k1Placeholder } from "@forshtat/hegota-support/tx";
-import { toWire, rpc, explainRejection } from "@forshtat/hegota-support/rpc";
+import { toWire, explainRejection } from "@forshtat/hegota-support/rpc";
 import type { Probes } from "../registry.js";
 
-export type ProbeCtx = { rpcUrl: string; altRpcUrl: string; probes: Probes; pk?: `0x${string}` };
-export type Probe = { id: number; name: string; run: (ctx: ProbeCtx) => Promise<unknown> };
+// Injected so tests can mock the node. Mirrors rpc(url, method, params).
+export type Rpc = (method: string, params?: unknown[]) => Promise<unknown>;
+export type ProbeCtx = { call: Rpc; probes: Probes; account: `0x${string}`; probeOpcodes?: `0x${string}` };
+export type Probe = { id: number; name: string; confirms: string[]; run: (ctx: ProbeCtx) => Promise<unknown> };
 
-/// A minimal single-frame VERIFY tx for simulation, targeting `to` with `data`.
-function verifyProbeTx(to: `0x${string}`, data: `0x${string}`) {
+/// Every devnet-dependent field that must be confirmed by a real probe before `just probe` may pin.
+export const REQUIRED_FOR_PIN = [
+  "opcodes", "feeFormat", "stakedExternalReads", "firstUseKeyStateGas", "sequenceCeiling",
+  "replacementBumpBps", "solvencyRejection", "reputationCounters",
+];
+
+const SELECTORS: Record<string, `0x${string}`> = {
+  APPROVE: "0x00000001",
+  TXPARAM: "0x00000002",
+  FRAMEPARAM: "0x00000003",
+  FRAMEDATALOAD: "0x00000004",
+  SIGPARAM: "0x00000005",
+};
+
+function verifyFrameTx(to: `0x${string}`, data: `0x${string}`) {
   return newTx({
     chainId: 1337,
     sender: to,
@@ -22,23 +38,26 @@ function verifyProbeTx(to: `0x${string}`, data: `0x${string}`) {
   });
 }
 
-async function simulate(ctx: ProbeCtx, tx: ReturnType<typeof newTx>) {
-  return rpc(ctx.rpcUrl, "ethrex_simulateFrameTransaction", [toWire(encodeTx(profile, tx) as never)]);
+async function simulate(ctx: ProbeCtx, to: `0x${string}`, data: `0x${string}`): Promise<unknown> {
+  return ctx.call("ethrex_simulateFrameTransaction", [toWire(verifyFrameTx(to, data))]);
 }
 
 export const probes: Probe[] = [
   {
-    // 1: which introspection opcodes a VERIFY frame can execute under simulation on chain 1337.
+    // 1: which introspection opcodes a VERIFY frame can run, via a deployed ProbeOpcodes helper that
+    // inherits HegotaSupport (one function per opcode). A clean simulate => supported; a revert => not.
     id: 1,
     name: "opcode support",
+    confirms: ["opcodes"],
     run: async (ctx) => {
+      if (!ctx.probeOpcodes) throw new Error("probeOpcodes address not set (deploy ProbeOpcodes first)");
       const out: Record<string, boolean> = {};
       for (const [name, o] of Object.entries(ctx.probes.opcodes)) {
         try {
-          await simulate(ctx, verifyProbeTx(ctx.probes.probeCell as `0x${string}`, ("0x" + name) as `0x${string}`));
+          await simulate(ctx, ctx.probeOpcodes, SELECTORS[name]);
           o.works = true;
-        } catch (e) {
-          o.works = explainRejection(e) !== "opcode-unsupported";
+        } catch {
+          o.works = false; // the Rejection family does not distinguish an unsupported opcode
         }
         out[name] = o.works!;
       }
@@ -46,43 +65,51 @@ export const probes: Probe[] = [
     },
   },
   {
-    // 2: emit TXPARAM MAX_COST (0x06) for a known gas/price and record which formula matches.
+    // 2: emit TXPARAM(MAX_COST) from a SENDER frame of a real tx; compare the logged value to
+    // Σ(limits.execution) * maxFeePerGas to decide total-cost vs per-gas.
     id: 2,
     name: "fee format",
+    confirms: ["feeFormat"],
     run: async (ctx) => {
-      const r = (await rpc(ctx.rpcUrl, "ethrex_simulateFrameTransaction", [])) as { maxCost: string; gas: string; price: string };
-      const v = BigInt(r.maxCost);
-      ctx.probes.feeFormat = v === BigInt(r.price) ? "per_gas" : "total_cost";
+      const r = (await ctx.call("alt_probeMaxCost")) as { maxCost: string; totalGas: string; maxFeePerGas: string } | null;
+      if (!r) throw new Error("fee probe returned nothing");
+      const maxCost = BigInt(r.maxCost);
+      const perGas = BigInt(r.maxFeePerGas);
+      const total = perGas * BigInt(r.totalGas);
+      if (maxCost === total) ctx.probes.feeFormat = "total_cost";
+      else if (maxCost === perGas) ctx.probes.feeFormat = "per_gas";
+      else throw new Error(`MAX_COST ${maxCost} matches neither total ${total} nor per-gas ${perGas}`);
       return ctx.probes.feeFormat;
     },
   },
   {
-    // 3: staked vs unstaked VERIFY reading the RoundFeed (expect a state-opcode rejection only unstaked).
+    // 3: a staked sender's VERIFY may read the market/feed; an unstaked one is rejected with an STO
+    // (state-access) rule. Needs the account staked (see docs: N7).
     id: 3,
     name: "staked external reads",
+    confirms: ["stakedExternalReads"],
     run: async (ctx) => {
-      let staked = true;
       try {
-        await simulate(ctx, verifyProbeTx(ctx.probes.probeCell as `0x${string}`, "0x"));
+        await simulate(ctx, ctx.account, "0x3ad51b8d"); // verifyLiquidation()
+        ctx.probes.stakedExternalReads = true;
       } catch (e) {
-        staked = explainRejection(e) !== "state-opcode-in-validation";
+        const r = explainRejection(e instanceof Error ? e.message : String(e));
+        if (r.rule === "STO") {
+          ctx.probes.stakedExternalReads = false;
+          throw new Error("unstaked VERIFY cannot read the feed (STO); stake the account (N7)");
+        }
+        throw e;
       }
-      ctx.probes.stakedExternalReads = staked;
-      if (!staked) throw new Error("unstaked VERIFY cannot read the feed (STO); firewall must change");
-      return staked;
+      return ctx.probes.stakedExternalReads;
     },
   },
-  {
-    // 4: first-use key cost at state limit 97,919 (fails) vs 97,920 (passes).
-    id: 4,
-    name: "first-use key cost",
-    run: async (ctx) => {
-      ctx.probes.firstUseKeyStateGas = 97920; // confirmed by the pass/fail boundary on chain
-      return ctx.probes.firstUseKeyStateGas;
-    },
-  },
-  { id: 5, name: "sequence ceiling", run: async (ctx) => ctx.probes.sequenceCeiling },
-  { id: 6, name: "keyed replacement", run: async (ctx) => ctx.probes.replacementBumpBps },
-  { id: 7, name: "solvency rejection", run: async (ctx) => ctx.probes.solvencyRejection },
-  { id: 8, name: "reputation counters", run: async (ctx) => ctx.probes.reputationCounters },
+  // Probes 4-8 (first-use key cost, sequence ceiling, keyed replacement, solvency, reputation) are not
+  // implemented until each sends a real transaction and reads a real result. Their fields stay null and
+  // the run cannot pin (see `allRequiredPinned`).
 ];
+
+/** May pin only when every REQUIRED_FOR_PIN field was confirmed by a real probe THIS run (not read from
+ *  the file). With probes 4-8 unimplemented, their fields are never confirmed, so this stays false. */
+export function mayPin(confirmedThisRun: Set<string>): boolean {
+  return REQUIRED_FOR_PIN.every((f) => confirmedThisRun.has(f));
+}
