@@ -25,13 +25,16 @@ describe("canonical frame tx (real hegota-support encoder)", () => {
     expect(back.nonceKeys[0]).toBe(nonceKeyFor(p.market, p.positionId));
     expect(back.frames.length).toBe(2);
   });
-  it("carries no signature by default (the pitch), with an ARBITRARY fallback available", () => {
-    expect(canonicalLiquidationTx(p).signatures.length).toBe(0);
+  it("carries one keyless ARBITRARY entry by default; empty-list is the probed stretch form", () => {
+    // Per docs/DEVNET.md the keyless liquidation uses one ARBITRARY entry by default (no crypto check,
+    // VERIFY decides); "no signature at all" (empty list) is probed and used only if the devnet admits it.
+    const def = canonicalLiquidationTx(p).signatures;
+    expect(def.length).toBe(1);
+    expect(def[0].scheme).toBe(0); // ARBITRARY
+    expect(def[0].signer).toBe("0x");
+    expect(def[0].signature).toBe("0x");
     expect(signatureEntries("empty").length).toBe(0);
-    const arb = signatureEntries("arbitrary");
-    expect(arb.length).toBe(1);
-    expect(arb[0].scheme).toBe(0); // ARBITRARY
-    expect(arb[0].signature).toBe("0x");
+    expect(signatureEntries("arbitrary").length).toBe(1);
   });
 
   it("the VERIFY frame carries the EXECUTION_AND_PAYMENT scope in its flags", () => {

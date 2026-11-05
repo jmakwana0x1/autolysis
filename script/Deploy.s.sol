@@ -39,6 +39,16 @@ contract Deploy is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
+    // Hegota devnet (chain 1337) predeployed Uniswap v4 (real bytecode). See docs/DEVNET.md. With
+    // USE_PREDEPLOYED_V4=true the BackstopHook is mined against this PoolManager instead of a fresh one,
+    // so the EF and Uniswap proofs run on one chain with official v4 bytecode. Tokens stay as our mocks
+    // (the real devnet USDC 0xEFe0...6AF5 is deployer-only mint; WETH9 0x1b7d...87b6 has no premint), so
+    // the pool is our WETH/USDC pair on the official manager.
+    address constant DEVNET_POOL_MANAGER = 0x6bF9Aa9c04fd001385742d61f6818C3236429848;
+    // NaiveStakingRegistry on the devnet; minStake 0.01 ETH, keyed on msg.sender (the account). The
+    // owner calls account.stake{value}(86400) as a normal legacy tx. See docs/DEVNET.md.
+    address constant DEVNET_STAKING_REGISTRY = 0xD51c04d7A0B01124E84DE152F4e56d9eeCB22D2F;
+
     struct Addrs {
         address weth;
         address usdc;
@@ -79,19 +89,40 @@ contract Deploy is Script {
         A.account = address(new AutolysisAccount(IFrameEnv(A.frameEnv)));
         A.market = address(new AutolysisMarket(IERC20(A.weth), IERC20(A.usdc), IRoundFeed(A.feed), A.account));
         AutolysisAccount(payable(A.account)).initialize(AutolysisMarket(payable(A.market)), 0.02e18);
-        // Stake the account where a registry is configured (devnet). Set STAKING_REGISTRY and
-        // STAKE_VALUE_WEI; on a local anvil both are unset and staking is skipped.
-        address registry = vm.envOr("STAKING_REGISTRY", address(0));
-        if (registry != address(0)) {
+
+        // On the Hegota sidecar, VERIFY has only MAX_VERIFY_GAS = 100,000 (no 1M staked allowance), and
+        // the staked-read VERIFY path measures ~131k. So enable the storage-only VERIFY path (W1.5),
+        // which reads the round/health gate from the account's own storage and fits under the cap
+        // (~98.6k). Off by default (the staked-read path is correct on a full ERC-8421 node); set
+        // STORAGE_ONLY_VERIFY=true for the devnet. See docs/DEVNET.md.
+        if (vm.envOr("STORAGE_ONLY_VERIFY", false)) {
+            AutolysisAccount(payable(A.account)).setStorageOnlyVerify(true);
+        }
+
+        // Stake the account so VERIFY reads are admitted and the crash demo can hold >4 pending txs.
+        // STAKING_REGISTRY defaults to the devnet NaiveStakingRegistry; STAKE_VALUE_WEI defaults to
+        // 0.012 ETH (> minStake 0.01). On a local anvil pass STAKING_REGISTRY=0x0 to skip staking.
+        address registry = vm.envOr("STAKING_REGISTRY", DEVNET_STAKING_REGISTRY);
+        if (registry != address(0) && registry.code.length > 0) {
             A.stakingRegistry = registry;
             AutolysisAccount(payable(A.account)).setStakingRegistry(IStakingRegistry(registry));
-            AutolysisAccount(payable(A.account)).stake{value: vm.envOr("STAKE_VALUE_WEI", uint256(1 ether))}(86_400);
+            AutolysisAccount(payable(A.account)).stake{value: vm.envOr("STAKE_VALUE_WEI", uint256(0.012 ether))}(
+                86_400
+            );
         }
     }
 
     /// Pool manager, mined-address hook, venue.
     function _deployV4() internal {
-        A.manager = address(new PoolManager(msg.sender));
+        // USE_PREDEPLOYED_V4=true on the devnet: mine the hook against the official PoolManager instead
+        // of deploying a fresh one, so the hook runs against real v4 bytecode. Otherwise deploy one
+        // (anvil / fork). See docs/DEVNET.md.
+        if (vm.envOr("USE_PREDEPLOYED_V4", false)) {
+            require(DEVNET_POOL_MANAGER.code.length > 0, "no predeployed PoolManager");
+            A.manager = DEVNET_POOL_MANAGER;
+        } else {
+            A.manager = address(new PoolManager(msg.sender));
+        }
         (bytes32 salt,) = _mineHook(A.manager, msg.sender, A.feed, Currency.wrap(A.usdc));
         BackstopHook hook = new BackstopHook{salt: salt}(
             IPoolManager(A.manager), msg.sender, IRoundFeed(A.feed), Currency.wrap(A.usdc)

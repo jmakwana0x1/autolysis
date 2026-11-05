@@ -10,16 +10,25 @@ function ctx(call: ProbeCtx["call"], extra: Partial<ProbeCtx> = {}): ProbeCtx {
 
 describe("devnet probes", () => {
   it("opcode support: confirmed only when every frame reports success", async () => {
-    const c = ctx(async () => ({ frames: [{ status: 0 }] }));
+    // Real sidecar simulate shape: frames:[{ gasUsed, succeeded }] (docs/DEVNET.md).
+    const c = ctx(async () => ({ valid: true, frames: [{ succeeded: true, gasUsed: 50_000 }] }));
     await probes[0].run(c);
     expect(Object.values(c.probes.opcodes).every((o) => o.works === true)).toBe(true);
     expect(c.probes.rawSimulateResponse).toBeDefined(); // raw response recorded on first run
   });
 
-  it("opcode support: a non-success frame status leaves it unconfirmed (throws, opcodes stay null)", async () => {
-    const c = ctx(async () => ({ frames: [{ status: 1 }] }));
+  it("opcode support: a non-success frame leaves it unconfirmed (throws, opcodes stay null)", async () => {
+    const c = ctx(async () => ({ valid: false, frames: [{ succeeded: false, gasUsed: 50_000 }] }));
     await expect(probes[0].run(c)).rejects.toThrow();
     expect(Object.values(c.probes.opcodes).every((o) => o.works === null)).toBe(true);
+  });
+
+  it("verify gas: passes under the cap, fails over it", async () => {
+    const under = ctx(async () => ({ valid: true, frames: [{ succeeded: true, gasUsed: 98_581 }] }));
+    await probes[3].run(under);
+    expect(under.probes.verifyGas).toBe(98_581);
+    const over = ctx(async () => ({ valid: true, frames: [{ succeeded: true, gasUsed: 131_589 }] }));
+    await expect(probes[3].run(over)).rejects.toThrow();
   });
 
   it("fee format: matches the receipt log against total vs per-gas", async () => {

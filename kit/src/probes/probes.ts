@@ -12,7 +12,8 @@ import type { Probes } from "../registry.js";
 export type Rpc = (method: string, params?: unknown[]) => Promise<unknown>;
 export type FeeProbeResult = { maxCost: bigint; totalGas: bigint; maxFeePerGas: bigint };
 export type ProbeCtx = {
-  call: Rpc;
+  call: Rpc; // sends (gateway /rpc)
+  simCall?: Rpc; // read-only simulate (ethrex root); defaults to `call` when absent
   probes: Probes;
   account: `0x${string}`;
   probeOpcodes?: `0x${string}`;
@@ -23,8 +24,8 @@ export type Probe = { id: number; name: string; confirms: string[]; run: (ctx: P
 
 /// Every devnet-dependent field that must be confirmed by a real probe before `just probe` may pin.
 export const REQUIRED_FOR_PIN = [
-  "opcodes", "feeFormat", "stakedExternalReads", "signatureForm", "firstUseKeyStateGas", "sequenceCeiling",
-  "replacementBumpBps", "solvencyRejection", "reputationCounters",
+  "opcodes", "feeFormat", "stakedExternalReads", "verifyGas", "signatureForm", "firstUseKeyStateGas",
+  "sequenceCeiling", "replacementBumpBps", "solvencyRejection", "reputationCounters",
 ];
 
 function verifyFrameTx(to: `0x${string}`, data: `0x${string}`) {
@@ -38,8 +39,25 @@ function verifyFrameTx(to: `0x${string}`, data: `0x${string}`) {
   });
 }
 
-async function simulate(ctx: ProbeCtx, to: `0x${string}`, data: `0x${string}`): Promise<unknown> {
-  return ctx.call("ethrex_simulateFrameTransaction", [toWire(verifyFrameTx(to, data))]);
+// ethrex_simulateFrameTransaction([rawTx, "latest", {trace:true}]) on the ethrex ROOT url (not /rpc).
+// Returns { valid, violation, maxCost, payer, frames:[{gasUsed, succeeded}], erc7562Trace }. See
+// docs/DEVNET.md (forshtat/mempool-workshop-sidecar @ 2e22ff0).
+type SimFrame = { gasUsed?: number | string; succeeded?: boolean };
+type SimResult = { valid?: boolean; violation?: string | null; maxCost?: string; payer?: string; frames?: SimFrame[] };
+
+async function simulate(ctx: ProbeCtx, to: `0x${string}`, data: `0x${string}`): Promise<SimResult> {
+  const call = ctx.simCall ?? ctx.call; // simulate runs against the ethrex root, not the gateway
+  return (await call("ethrex_simulateFrameTransaction", [
+    toWire(verifyFrameTx(to, data)),
+    "latest",
+    { trace: true },
+  ])) as SimResult;
+}
+
+function asGas(v: number | string | undefined): number {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") return Number(BigInt(v));
+  return NaN;
 }
 
 export const probes: Probe[] = [
@@ -58,9 +76,10 @@ export const probes: Probe[] = [
       if (ctx.probes.rawSimulateResponse === undefined || ctx.probes.rawSimulateResponse === null) {
         ctx.probes.rawSimulateResponse = res as unknown; // record the format on the first run
       }
-      const frames = (res as { frames?: { status?: string | number }[] })?.frames ?? [];
-      const ok = frames.length > 0 && frames.every((f) => f.status === 0 || f.status === "0x0" || f.status === "success");
-      // Only a confirmed success marks the opcodes as working; anything else leaves them null.
+      const frames = res?.frames ?? [];
+      // The sidecar's per-frame result is { gasUsed, succeeded }; only a confirmed success marks the
+      // opcodes as working, anything else leaves them null.
+      const ok = frames.length > 0 && frames.every((f) => f.succeeded === true);
       if (!ok) throw new Error("VERIFY frame did not report success; opcodes unconfirmed");
       for (const o of Object.values(ctx.probes.opcodes)) o.works = true;
       return { confirmed: true, frames: frames.length };
@@ -89,25 +108,45 @@ export const probes: Probe[] = [
     name: "staked external reads",
     confirms: ["stakedExternalReads"],
     run: async (ctx) => {
-      try {
-        await simulate(ctx, ctx.account, "0x3ad51b8d"); // verifyLiquidation()
+      // simulate returns { valid, violation } rather than throwing. On the alt mempool an unstaked
+      // entity reading another contract's storage yields a violation like
+      // "unstaked <role> accessed <addr> slot <slot>" (sidecar validators/frameTx.ts:798). NOTE: on
+      // the forshtat sidecar the storage-only VERIFY path reads no outside contract, so this probe is
+      // about whether the STAKED-read design is admitted at all; our shipping path avoids it.
+      const res = await simulate(ctx, ctx.account, "0x3ad51b8d"); // verifyLiquidation()
+      if (res.valid === true && !res.violation) {
         ctx.probes.stakedExternalReads = true;
-      } catch (e) {
-        const r = explainRejection(e instanceof Error ? e.message : String(e));
-        if (r.rule === "STO") {
-          ctx.probes.stakedExternalReads = false;
-          throw new Error("unstaked VERIFY cannot read the feed (STO); stake the account (N7)");
-        }
-        throw e;
+      } else {
+        const r = explainRejection(res.violation ?? "");
+        ctx.probes.stakedExternalReads = false;
+        throw new Error(`VERIFY external read not admitted (violation: ${res.violation ?? "?"}; rule ${r.rule ?? "?"})`);
       }
       return ctx.probes.stakedExternalReads;
     },
   },
   {
-    // 4 (R4): which signature form the alt-mempool admits. The pitch is "no signature" (empty list);
-    // if that is rejected the kit falls back to a single ARBITRARY entry. Submit the canonical tx with
-    // an empty list; on an invalid-signature rejection, submit with ARBITRARY; record which was admitted.
+    // 4 (devnet facts probe #4): the VERIFY frame's gas must fit MAX_VERIFY_GAS. Read frames[0].gasUsed
+    // from a real simulate of the ACCOUNT's verifyLiquidation() and require it <= 100,000 minus the
+    // signature cost (ARBITRARY = 100), i.e. <= 99,900. This is the authoritative number the local
+    // MockFrameEnv measurement (~98.6k storage-only; ~131k staked) only approximates. See docs/DEVNET.md.
     id: 4,
+    name: "verify gas fits MAX_VERIFY_GAS",
+    confirms: ["verifyGas"],
+    run: async (ctx) => {
+      const res = await simulate(ctx, ctx.account, "0x3ad51b8d"); // verifyLiquidation()
+      const g = asGas(res.frames?.[0]?.gasUsed);
+      if (!Number.isFinite(g)) throw new Error("simulate returned no frames[0].gasUsed");
+      const cap = 100_000 - 100; // MAX_VERIFY_GAS - ARBITRARY signature cost
+      ctx.probes.verifyGas = g;
+      if (g > cap) throw new Error(`VERIFY gas ${g} exceeds admissible limit ${cap}; slim VERIFY (docs/DEVNET.md)`);
+      return { verifyGas: g, cap };
+    },
+  },
+  {
+    // 5 (devnet facts probe #5): which signature form the alt-mempool admits. Per docs/DEVNET.md the
+    // keyless default is one ARBITRARY entry; the "no signature at all" (empty list) form is the stretch
+    // goal. Submit with an empty list; on rejection, submit with ARBITRARY; record which was admitted.
+    id: 5,
     name: "signature form",
     confirms: ["signatureForm"],
     run: async (ctx) => {

@@ -17,6 +17,7 @@ export type Probes = {
   frameParams: Record<string, number>;
   feeFormat: "total_cost" | "per_gas";
   stakedExternalReads: boolean | null;
+  verifyGas: number | null; // frames[0].gasUsed from a real simulate; must be <= 99,900 (MAX_VERIFY_GAS - sig)
   firstUseKeyStateGas: number;
   sequenceCeiling: string;
   replacementBumpBps: number;

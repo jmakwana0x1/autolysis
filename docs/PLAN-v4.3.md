@@ -1,5 +1,12 @@
 # Autolysis build plan v4.3
 
+> **Superseded in part by [`docs/DEVNET.md`](./DEVNET.md) (Nov 5).** The devnet is now real and its facts
+> (endpoints, `MAX_VERIFY_GAS = 100,000` with no 1M staked allowance, `NaiveStakingRegistry` + minStake
+> 0.01 ETH, ARBITRARY-by-default signatures, predeployed Uniswap v4 on chain 1337, the probe rewrite on
+> `ethrex_simulateFrameTransaction`) override the assumptions below wherever they differ. Biggest change:
+> deploy the BackstopHook against the **predeployed** v4 PoolManager on the devnet (EF + Uniswap proofs on
+> one chain), and VERIFY must use the storage-only path to fit 100k.
+
 Written Wed Nov 4, 22:10 IST. Submission Sat Nov 7, 09:00 IST. Replaces the build order in REVIEW-3;
 its R1-R5 items still apply. Three environments prove three tracks:
 

@@ -25,17 +25,17 @@ export const accountAbi = [
   },
 ] as const;
 
-/** Signature entries for the liquidation. The pitch is "no signature": an empty list. ERC-8421 rejects
- *  any INVALID signature, so if the devnet rejects an empty list the probe falls back to a single
- *  ARBITRARY entry (scheme 0x0, empty fields); `probes.json.signatureForm` records which the devnet
- *  accepts, and the builder uses it (defaulting to empty until probed). */
+/** Signature entries for the keyless liquidation. Per the devnet facts (docs/DEVNET.md), the keyless
+ *  liquidation uses one ARBITRARY entry {scheme:0, signer:"0x", msg:"0x", signature:"0x"} — no crypto
+ *  check, the account's VERIFY logic decides — and that is the default here. The "no signature at all"
+ *  pitch (an empty list) is the stretch form: probe 5 tries it, and `probes.json.signatureForm` records
+ *  whether the devnet admits it; the builder uses that when set. One ARBITRARY entry costs 100 gas
+ *  toward MAX_VERIFY_GAS (sidecar validationPrefix.ts). */
 export type SignatureForm = "empty" | "arbitrary";
 export function signatureEntries(form?: SignatureForm): SignatureEntry[] {
-  const f = form ?? ((readProbes().signatureForm as SignatureForm) ?? "empty");
-  if (f === "arbitrary") {
-    return [{ scheme: sigScheme(profile, "ARBITRARY"), signer: "0x", msg: "0x", signature: "0x" }];
-  }
-  return [];
+  const f = form ?? ((readProbes().signatureForm as SignatureForm) ?? "arbitrary");
+  if (f === "empty") return [];
+  return [{ scheme: sigScheme(profile, "ARBITRARY"), signer: "0x", msg: "0x", signature: "0x" }];
 }
 
 /** key = H(market, id) with the top byte cleared — must match FirewallRules.nonceKey. */

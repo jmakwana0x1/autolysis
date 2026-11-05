@@ -3,6 +3,14 @@
 Autolysis v4 — what is proven where. Nothing is proven on a live devnet yet (none is available in this
 build), so the honest split is **proven by local suite** vs **needs a devnet**.
 
+> **Devnet facts (Nov 5): see [`docs/DEVNET.md`](./DEVNET.md).** The Hegota alt-mempool devnet is now real
+> (chain 1337, endpoints + predeployed Uniswap v4 + `NaiveStakingRegistry`), read from the vendored
+> `forshtat/mempool-workshop` (`bcfe02a`) and `-sidecar` (`2e22ff0`). Those facts override assumptions in
+> `PLAN-v4.3.md` / `REVIEW-3`. The load-bearing one: **`MAX_VERIFY_GAS = 100,000`, no 1M staked allowance
+> in this sidecar.** The staked-read VERIFY path measures ~131k and is **inadmissible** here; the
+> storage-only VERIFY path (W1.5, ~98.6k on the mock) is what ships on the devnet. Authoritative gas comes
+> from `ethrex_simulateFrameTransaction` per run.
+
 ## Proven by local suite (Foundry + v4-core/SwapVM + kit vitest)
 
 | Area | Where | Suite |
@@ -55,9 +63,9 @@ Labels: **on devnet** · **local test** (runs on anvil / Foundry here) · **mock
 | Item | State | Label |
 | --- | --- | --- |
 | R1 deploy + seed | `script/Deploy.s.sol` + `kit/src/seed.ts` run end to end on anvil: all addresses have code, 3 borrowers at HF 1.03/1.06/1.10, liquidity, house, makers | **local test** |
-| R2 staking | `IStakingRegistry` + `AutolysisAccount.stake`; VERIFY measured at ~129k gas (< 1M staked limit) via a mock registry; deploy stakes when `STAKING_REGISTRY` is set | **local test** (mock registry); registry address + MIN_STAKE_VALUE on 1337 **written, not run** |
-| R3 probes | `ProbeOpcodes.sol` (real `HegotaSupport`) deploys on anvil; probes 1–2 use real methods + per-frame status + receipt log, record the raw response, never pin unconfirmed | opcode deploy **local test**; probe execution **written, not run** (needs frame opcodes) |
-| R4 no-signature | liquidation tx built with `signatures: []`; ARBITRARY fallback; `signatureForm` probe + pin-required field | **local test** (build/encode); which form the mempool admits **written, not run** |
+| R2 staking | `NaiveStakingRegistry` at `0xD51c…D2F`, minStake 0.01 ETH, keyed on msg.sender; deploy calls `account.stake{0.012 ETH}(86400)` and defaults the registry to the devnet address. **MAX_VERIFY_GAS = 100k, NOT 1M** — the staked-read VERIFY path (~131k, R2_staking.t.sol) is **inadmissible**; the storage-only path (W1.5, ~98.6k) ships. | staking build **local test**; the 100k cap vs real `frames[0].gasUsed` **written, not run** (devnet simulate) |
+| R3 probes | `ProbeOpcodes.sol` (real `HegotaSupport`) deploys on anvil; probes rewritten on `ethrex_simulateFrameTransaction([tx,"latest",{trace:true}])` reading `{succeeded,gasUsed,violation}`; added a VERIFY-gas probe (`frames[0].gasUsed` ≤ 99,900) | opcode deploy **local test**; probe execution **written, not run** (needs the devnet) |
+| R4 signature | keyless liquidation = one ARBITRARY entry `{scheme:0,…}` by **default** (per devnet facts), empty-list is the probed stretch form; ARBITRARY costs 100 gas toward MAX_VERIFY_GAS | **local test** (build/encode); whether empty-list is admitted **written, not run** |
 | R5 Aqua fork | gated fork compiles vs upstream SwapVM/Aqua; LiquidationGate verified at `_dispatch`; full maker-ship swap through the real `Aqua.ship`/`swap` ABI | gate + **full fill** **local test** (see W2 below) |
 
 Nothing is **on devnet** yet (no RPC in this environment). Fresh clone: run `just setup` once (builds the
