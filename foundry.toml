@@ -60,3 +60,20 @@ depth = 64
 
 [lint]
 lint_on_build = false
+
+# Isolated SwapVM/Aqua fork build (solc 0.8.30, OZ 5.6.1). Its own remappings (profile remappings
+# replace, not merge) avoid the main project's bundled-OZ clash. Run: FOUNDRY_PROFILE=aqua forge build
+[profile.aqua]
+via_ir = true
+src = "aqua-fork/src"
+test = "aqua-fork/test"
+script = "aqua-fork/script"
+solc = "0.8.30"
+optimizer_runs = 1000
+remappings = [
+  "@1inch/swap-vm/=lib/swap-vm/",
+  "@1inch/aqua/=lib/aqua/",
+  "@1inch/solidity-utils/=lib/solidity-utils/",
+  "@openzeppelin/contracts/=lib/openzeppelin-5/contracts/",
+  "forge-std/=lib/forge-std/src/",
+]

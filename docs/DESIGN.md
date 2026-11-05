@@ -90,13 +90,17 @@ a separate Hardhat/solc-0.8.30 toolchain):
   `selfLiquidate` re-checks the key with TXPARAM. The probe sources are excluded from the kit's typecheck
   until the package is built against a devnet.
 
-- **SwapVM fork (M5).** `1inch/swap-vm` @ `f9f4acf` is vendored at `lib/swap-vm` for reference (it is
-  under `LicenseRef-Degensoft-SwapVM-1.1`, all rights reserved — referenced, not copied into our tree).
-  The production `AutolysisAquaRouter` becomes a fork of `AquaSwapVMRouter` whose `_dispatch` handles a
-  `LiquidationGate` opcode (`ctx.query.taker == hook && market.liquidationActive()`) before `_runOpcode`,
-  kept in `contracts/aqua-fork/` under SwapVM-1.1 (the license requires modifications to stay under it).
-  The EIP-1167 clone allowlist in our model is replaced by an order-hash template check: the hook rebuilds
-  the expected program from a template plus the maker's registered parameters and accepts the order only
-  if `hash(order)` matches, with the gate as the first instruction. SwapVM's own test suite is then run
-  with the opcode added. Until that fork is built, `src/aqua` is a faithful model with the same guarantees
-  (gate, oracle pricing, template allowlist, stipends, skip rules), proven by the local Foundry suites.
+- **SwapVM fork (M5/N3).** `1inch/swap-vm` @ `f9f4acf`, `1inch/aqua` @ `v1.0.2-rc.2`,
+  `1inch/solidity-utils` @ `v7.0.3` and OpenZeppelin `v5.6.1` are vendored. The real fork lives in
+  `aqua-fork/` (its own Foundry profile, solc 0.8.30, `via_ir`, OZ 5.6.1 — isolated from the main
+  project whose bundled OZ remapping would clash) under the SwapVM-1.1 license (`aqua-fork/LICENSES/`,
+  which requires modifications to stay under it). `AutolysisAquaRouterGated` forks `AquaSwapVMRouter`
+  (extends `Simulator, SwapVM, AquaOpcodes`) and overrides `_dispatch` to handle a `LiquidationGate`
+  opcode — `ctx.query.taker == hook && IGateVenue(venue).liquidationActive()` — before `_runOpcode`.
+  `FOUNDRY_PROFILE=aqua forge test` (`just aqua`) compiles it against the real SwapVM/Aqua and runs the
+  gate test (hook + active passes; stranger / inactive revert). **Remaining for the full 1inch track:**
+  makers ship their strategy into Aqua with the gate as the first instruction, the hook acts as taker,
+  and the order-hash template check (the hook rebuilds the expected program from a template plus the
+  maker's registered parameters and accepts only if `hash(order)` matches) replaces the EIP-1167 clone
+  allowlist; then run SwapVM's own suite with the opcode. This wiring crosses the 0.8.30/0.8.26 boundary
+  (a deployment concern). `src/aqua` stays as the fast-test model with the same guarantees.

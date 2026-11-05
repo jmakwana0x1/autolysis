@@ -10,3 +10,12 @@
 [submodule "lib/swap-vm"]
 	path = lib/swap-vm
 	url = https://github.com/1inch/swap-vm
+[submodule "lib/aqua"]
+	path = lib/aqua
+	url = https://github.com/1inch/aqua
+[submodule "lib/solidity-utils"]
+	path = lib/solidity-utils
+	url = https://github.com/1inch/solidity-utils
+[submodule "lib/openzeppelin-5"]
+	path = lib/openzeppelin-5
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
