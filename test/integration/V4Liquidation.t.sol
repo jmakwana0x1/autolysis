@@ -143,7 +143,7 @@ contract V4LiquidationTest is Test, Deployers {
         assertLt(market.healthFactor(posId), 1e18, "unhealthy after crash");
 
         uint256 colId = uint256(uint160(address(col)));
-        uint256 makerClaimsBefore = manager.balanceOf(maker, colId);
+        uint256 makerColBefore = col.balanceOf(maker);
         uint256 makerUsdcBefore = usdc.balanceOf(maker);
         (,, uint256 debtBefore,) = market.positions(posId);
 
@@ -158,7 +158,7 @@ contract V4LiquidationTest is Test, Deployers {
         assertEq(market.liquidationCount(posId), 1, "one step recorded");
         // The maker funded the fill with USDC and received collateral claims in the same liquidation.
         assertLt(usdc.balanceOf(maker), makerUsdcBefore, "maker USDC not used");
-        assertGt(manager.balanceOf(maker, colId), makerClaimsBefore, "maker not paid collateral");
+        assertGt(col.balanceOf(maker), makerColBefore, "maker not paid real collateral");
         assertEq(manager.balanceOf(address(hook), colId), 0, "hook left holding collateral claims");
     }
 }

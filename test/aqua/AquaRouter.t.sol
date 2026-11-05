@@ -91,7 +91,7 @@ contract AquaRouterTest is Test {
     function test_quoteEqualsFill() public {
         _addMaker(makerA, 15e18, 15e18, 100); // spread 1% -> eff 1.98
         _addMaker(makerB, 1000e18, 1000e18, 300); // spread 3% -> eff 1.94
-        (uint256 qUsdc, uint256 qCol) = router.quote(20e18);
+        (uint256 qUsdc, uint256 qCol) = router.quote(20e18, 2e18);
         _openGate();
         vm.prank(hook);
         (uint256 fUsdc, uint256 fCol,) = router.fill(20e18, hook, 2e18);

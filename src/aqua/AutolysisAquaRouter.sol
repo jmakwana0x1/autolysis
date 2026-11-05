@@ -91,11 +91,6 @@ contract AutolysisAquaRouter {
         return makers.length;
     }
 
-    function _effPrice(uint256 baseSpreadBps) internal view returns (uint256) {
-        uint256 oracle = feed.getRound(feed.latestRound()).price;
-        return oracle.effectivePrice(baseSpreadBps, volAddonBps);
-    }
-
     function _effPriceAt(uint256 oraclePrice, uint256 baseSpreadBps) internal view returns (uint256) {
         return oraclePrice.effectivePrice(baseSpreadBps, volAddonBps);
     }
@@ -103,12 +98,16 @@ contract AutolysisAquaRouter {
     /// @notice Quote the USDC a fill of `collateralIn` would raise across makers, at current prices.
     ///         Uses the same pricing and the same skip rules as `fill` (a view, so no stipend / no
     ///         state): quote equals fill under unchanged state.
-    function quote(uint256 collateralIn) external view returns (uint256 usdcOut, uint256 collateralUsed) {
+    function quote(uint256 collateralIn, uint256 oraclePrice)
+        external
+        view
+        returns (uint256 usdcOut, uint256 collateralUsed)
+    {
         uint256 remaining = collateralIn;
         for (uint256 i; i < makers.length && remaining > 0; ++i) {
             Maker storage m = makers[i];
             if (!m.active) continue;
-            uint256 eff = _effPrice(m.baseSpreadBps);
+            uint256 eff = _effPriceAt(oraclePrice, m.baseSpreadBps);
             if (eff == 0) continue;
             uint256 makerUsdc = m.strategy.available();
             if (makerUsdc == 0) continue;

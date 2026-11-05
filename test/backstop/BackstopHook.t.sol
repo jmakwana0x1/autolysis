@@ -129,10 +129,11 @@ contract BackstopHookTest is Test, Deployers {
     // claims and the hook holds no collateral claims afterward.
     function test_depositsFillPaysHouseAndLeavesNoClaims() public {
         _fundDeposits(10e18);
-        uint256 ownerClaimsBefore = manager.balanceOf(hookOwner, _colId());
+        MockERC20 c0 = MockERC20(Currency.unwrap(currency0));
+        uint256 ownerColBefore = c0.balanceOf(hookOwner);
         uint256 got = _sell(1e15, 1e15); // 1:1 oracle
         assertEq(got, 1e15, "venue should raise 1e15 USDC from the deposits tier");
-        assertEq(manager.balanceOf(hookOwner, _colId()) - ownerClaimsBefore, 1e15, "house not paid collateral");
+        assertEq(c0.balanceOf(hookOwner) - ownerColBefore, 1e15, "house not paid real collateral");
         assertEq(manager.balanceOf(address(hook), _colId()), 0, "hook must hold no collateral claims");
     }
 
@@ -140,12 +141,16 @@ contract BackstopHookTest is Test, Deployers {
     function test_makerFillPaysMakerCollateral() public {
         _addMaker(1e15, 1e15);
         uint256 makerUsdcBefore = MockERC20(Currency.unwrap(currency1)).balanceOf(maker);
-        uint256 makerClaimsBefore = manager.balanceOf(maker, _colId());
+        uint256 makerColBefore = MockERC20(Currency.unwrap(currency0)).balanceOf(maker);
         _sell(1e15, 1e15);
         assertEq(
             makerUsdcBefore - MockERC20(Currency.unwrap(currency1)).balanceOf(maker), 1e15, "maker USDC not pulled"
         );
-        assertEq(manager.balanceOf(maker, _colId()) - makerClaimsBefore, 1e15, "maker not paid collateral");
+        assertEq(
+            MockERC20(Currency.unwrap(currency0)).balanceOf(maker) - makerColBefore,
+            1e15,
+            "maker not paid real collateral"
+        );
         assertEq(manager.balanceOf(address(hook), _colId()), 0, "hook must hold no collateral claims");
     }
 
@@ -153,20 +158,25 @@ contract BackstopHookTest is Test, Deployers {
     function test_waterfallOrder() public {
         _addMaker(0.4e15, 0.4e15);
         _fundDeposits(0.4e15);
-        uint256 makerClaimsBefore = manager.balanceOf(maker, _colId());
-        uint256 ownerClaimsBefore = manager.balanceOf(hookOwner, _colId());
+        MockERC20 c0 = MockERC20(Currency.unwrap(currency0));
+        uint256 makerColBefore = c0.balanceOf(maker);
+        uint256 ownerColBefore = c0.balanceOf(hookOwner);
         _sell(1e15, 0); // 0.4 makers + 0.4 deposits + 0.2 curve
-        assertEq(manager.balanceOf(maker, _colId()) - makerClaimsBefore, 0.4e15, "tier 1 maker share");
-        assertEq(manager.balanceOf(hookOwner, _colId()) - ownerClaimsBefore, 0.4e15, "tier 2 house share");
+        assertEq(c0.balanceOf(maker) - makerColBefore, 0.4e15, "tier 1 maker share");
+        assertEq(c0.balanceOf(hookOwner) - ownerColBefore, 0.4e15, "tier 2 house share");
         assertEq(manager.balanceOf(address(hook), _colId()), 0, "hook holds no claims");
     }
 
     function test_tier2UntouchedWhenMakersCover() public {
         _addMaker(2e15, 2e15);
         _fundDeposits(10e18);
-        uint256 ownerClaimsBefore = manager.balanceOf(hookOwner, _colId());
+        uint256 ownerColBefore = MockERC20(Currency.unwrap(currency0)).balanceOf(hookOwner);
         _sell(1e15, 1e15);
-        assertEq(manager.balanceOf(hookOwner, _colId()), ownerClaimsBefore, "deposits tier must stay untouched");
+        assertEq(
+            MockERC20(Currency.unwrap(currency0)).balanceOf(hookOwner),
+            ownerColBefore,
+            "deposits tier must stay untouched"
+        );
     }
 
     // Deltas net to zero for every backstop sale (the unlock reverts otherwise).

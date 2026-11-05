@@ -86,6 +86,11 @@ contract V4Venue is ISwapVenue, IUnlockCallback {
         if (msg.sender != address(manager)) revert NotManager();
         (uint256 collateralIn, uint256 minDebtOut) = abi.decode(data, (uint256, uint256));
 
+        // Settle-before-swap: pay the collateral into the manager BEFORE the swap (N4), so the hook can
+        // hand makers and the house real tokens during beforeSwap instead of ERC-6909 claims. The swap's
+        // collateral debit then nets against this credit.
+        collateral.settle(manager, address(this), collateralIn, false);
+
         BalanceDelta delta = manager.swap(
             key,
             SwapParams({
@@ -95,16 +100,13 @@ contract V4Venue is ISwapVenue, IUnlockCallback {
             }),
             abi.encode(BackstopHook.HookData({isLiquidation: true}))
         );
-        return abi.encode(_settle(delta, minDebtOut));
-    }
 
-    /// @dev Settle the collateral owed, take and return the USDC due (enforcing minOut).
-    function _settle(BalanceDelta delta, uint256 minDebtOut) private returns (uint256 debtOut) {
-        int256 colDelta = zeroForOne ? int256(delta.amount0()) : int256(delta.amount1());
+        // After settling collateral up front and the swap, the net collateral delta is ~zero and the USDC
+        // is owed to us; take it and enforce minOut.
         int256 debtDelta = zeroForOne ? int256(delta.amount1()) : int256(delta.amount0());
-        if (colDelta < 0) collateral.settle(manager, address(this), uint256(-colDelta), false);
-        debtOut = debtDelta > 0 ? uint256(debtDelta) : 0;
+        uint256 debtOut = debtDelta > 0 ? uint256(debtDelta) : 0;
         require(debtOut >= minDebtOut, "minOut");
         if (debtOut > 0) debt.take(manager, address(this), debtOut, false);
+        return abi.encode(debtOut);
     }
 }
