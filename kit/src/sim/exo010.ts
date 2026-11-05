@@ -45,10 +45,22 @@ export function status(c: Counters): Status {
   return "BANNED";
 }
 
-export type Point = { t: number; baselineMaxSeen: number; proposedMaxSeen: number; throttleLine: number };
+export type Point = {
+  t: number;
+  baselineMaxSeen: number;
+  proposedMaxSeen: number;
+  throttleLine: number; // included + ACTIVE_MARGIN
+  banLine: number; // included + THROTTLE_MARGIN
+};
 
-/** Run a trace under both rules. `staked` applies REPUTATION-330 to external misses. */
-export function simulate(trace: Event[], opts: { staked?: boolean } = {}): {
+/** Run a trace under both rules.
+ *  `seen` counts every admitted transaction (+1 at admission), per ERC-8421. An inclusion then also
+ *  bumps `included`. The baseline keeps the admission count for a miss too. The proposed EXO-010 rule
+ *  CANCELS the admission for a miss caused by an outside state change (+1 at admission, -1 on
+ *  invalidation, net 0), so a market-wide bounce leaves the carrier exactly where it started; a genuine
+ *  miss keeps its +1 under both rules. (Contrast REPUTATION-310, which decrements a sponsoring payer
+ *  when revalidation fails because of the sender; EXO-010 differs in that the cause is outside state.) */
+export function simulate(trace: Event[]): {
   series: Point[];
   baseline: Counters;
   proposed: Counters;
@@ -57,20 +69,20 @@ export function simulate(trace: Event[], opts: { staked?: boolean } = {}): {
 } {
   let baseline: Counters = { seen: 0, included: 0 };
   let proposed: Counters = { seen: 0, included: 0 };
-  const staked = opts.staked ?? false;
   const series: Point[] = [pt(0, baseline, proposed)];
   trace.forEach((e, i) => {
     switch (e.kind) {
       case "included":
+        // Admission (+1 seen) and inclusion (+1 included), both rules.
         baseline = { seen: baseline.seen + 1, included: baseline.included + 1 };
         proposed = { seen: proposed.seen + 1, included: proposed.included + 1 };
         break;
       case "miss":
-        // Baseline: every miss raises seen (unless a staked sender absorbs an external failure).
-        if (!(staked && e.external)) baseline = { ...baseline, seen: baseline.seen + 1 };
-        // Proposed: an outside-caused miss decrements seen (EXO-010); a genuine miss still raises it.
-        if (e.external) proposed = { ...proposed, seen: Math.max(0, proposed.seen - 1) };
-        else proposed = { ...proposed, seen: proposed.seen + 1 };
+        // Admission (+1 seen) under both rules.
+        baseline = { ...baseline, seen: baseline.seen + 1 };
+        proposed = { ...proposed, seen: proposed.seen + 1 };
+        // Proposed only: an outside-caused invalidation cancels that admission (net 0).
+        if (e.external) proposed = { ...proposed, seen: proposed.seen - 1 };
         break;
       case "replacement":
         // REPUTATION-040: no counter change under either rule.
@@ -82,13 +94,7 @@ export function simulate(trace: Event[], opts: { staked?: boolean } = {}): {
     }
     series.push(pt(i + 1, baseline, proposed));
   });
-  return {
-    series,
-    baseline,
-    proposed,
-    baselineStatus: status(baseline),
-    proposedStatus: status(proposed),
-  };
+  return { series, baseline, proposed, baselineStatus: status(baseline), proposedStatus: status(proposed) };
 }
 
 function pt(t: number, b: Counters, p: Counters): Point {
@@ -96,7 +102,8 @@ function pt(t: number, b: Counters, p: Counters): Point {
     t,
     baselineMaxSeen: maxSeen(b),
     proposedMaxSeen: maxSeen(p),
-    throttleLine: b.included + THROTTLE_MARGIN,
+    throttleLine: b.included + ACTIVE_MARGIN,
+    banLine: b.included + THROTTLE_MARGIN,
   };
 }
 

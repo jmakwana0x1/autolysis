@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { simulate, bounceTrace, THROTTLE_MARGIN } from "../src/sim/exo010.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const pending = Number(process.env.PENDING ?? 600);
+const pending = Number(process.env.PENDING ?? 150);
 const { series, baselineStatus, proposedStatus, baseline, proposed } = simulate(bounceTrace(pending));
 mkdirSync(join(root, "out"), { recursive: true });
 writeFileSync(
