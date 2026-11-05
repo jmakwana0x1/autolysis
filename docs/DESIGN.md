@@ -103,4 +103,21 @@ a separate Hardhat/solc-0.8.30 toolchain):
   and the order-hash template check (the hook rebuilds the expected program from a template plus the
   maker's registered parameters and accepts only if `hash(order)` matches) replaces the EIP-1167 clone
   allowlist; then run SwapVM's own suite with the opcode. This wiring crosses the 0.8.30/0.8.26 boundary
-  (a deployment concern). `src/aqua` stays as the fast-test model with the same guarantees.
+  (a deployment concern). ### R5 progress and the exact remaining recipe
+
+Done and verified: the gated fork compiles against upstream SwapVM/Aqua; the `LiquidationGate` opcode
+(`0xf9`) is checked at `_dispatch` (hook+active passes, stranger/inactive revert, `just aqua`); and
+`src/aqua/ISwapVMRouter.sol` is the ABI-exact 0.8.26 seam the hook uses to call the 0.8.30 router across
+the solc boundary (the hook only needs the ABI; deploy the router in a 0.8.26 test with
+`vm.deployCode("aqua-fork/out/AutolysisAquaRouterGated.sol/AutolysisAquaRouterGated.json", args)`).
+
+Remaining (written up, not yet run end to end): a maker `ship`s an order whose program is the gate as
+the first instruction — a bare `hex"f900"` header passed as the `prefix` to
+`Strategies.buildXYCConcentrateOrder` (or `buildLimitOrder`), then the oracle-pricing instruction
+(`OraclePriceAdjuster` / an `Extruction` reading `venue.liquidationPrice()`), then the swap. `BackstopHook`
+tier 1 calls `ISwapVMRouter.swap` as the taker for each registered order; the order-hash template check
+(rebuild the expected program from a template + the maker's registered parameters, accept only if
+`hash(order)` matches) replaces the EIP-1167 clone allowlist. Exit test: a full liquidation moves USDC out
+of the maker's wallet and WETH into it, and a stranger calling the router directly reverts
+`LiquidationGateClosed`. This uses SwapVM's Aqua test-base order/ship encoding, so it is built in the
+`aqua` (0.8.30) profile. `src/aqua` stays as the fast-test model with the same guarantees.
