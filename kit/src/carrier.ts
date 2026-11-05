@@ -1,23 +1,22 @@
-// Replacement-based carrier: builds the canonical liquidation frame tx for a position, broadcasts it
-// to the alternative mempool, and on a new round rebroadcasts the SAME key with a fee bump (keyed
+// Replacement-based carrier: builds the canonical liquidation frame tx for a position and broadcasts it
+// to the alternative mempool; on a new round it rebroadcasts the SAME key with a fee bump (keyed
 // replacement). Guarantee enforced here: never more pending liquidations than the tank can pay for.
-import { type Address, type PublicClient, type Hex } from "viem";
-import { canonicalLiquidationTx, serializeFrameTx, totalGas, type FrameTx } from "./frameTx.js";
+import { type Address } from "viem";
+import { canonicalLiquidationTx, type FrameTx } from "./frameTx.js";
 import { readProbes } from "./registry.js";
 
 export type CarrierConfig = {
   chainId: number;
   account: Address;
   market: Address;
-  client: PublicClient;
-  submit: (raw: Hex) => Promise<Hex>; // alt-mempool submit (namespaced RPC on the sidecar)
+  submit: (tx: FrameTx) => Promise<unknown>; // e.g. rpc(url, "eth_sendFrameTransaction", [toWire(tx)])
   tankHeadroom: (positionId: bigint) => Promise<bigint>; // attempts the tank can still back
 };
 
 type Pending = { tx: FrameTx; fee: bigint; round: bigint };
 
 export class Carrier {
-  private pending = new Map<string, Pending>(); // key = positionId
+  private pending = new Map<string, Pending>();
 
   constructor(private cfg: CarrierConfig) {}
 
@@ -25,7 +24,6 @@ export class Carrier {
     return id.toString();
   }
 
-  /** Build (or replace) the liquidation for a position at the current round. */
   async liquidate(params: {
     positionId: bigint;
     roundId: bigint;
@@ -37,8 +35,6 @@ export class Carrier {
   }): Promise<{ submitted: boolean; replaced: boolean; reason?: string }> {
     const headroom = await this.cfg.tankHeadroom(params.positionId);
     const existing = this.pending.get(this.key(params.positionId));
-    // Never exceed what the tank can pay: a brand-new pending needs >=1 headroom; a replacement reuses
-    // the slot it already holds and so needs no additional headroom.
     if (!existing && headroom === 0n) {
       return { submitted: false, replaced: false, reason: "tank has no headroom" };
     }
@@ -47,7 +43,6 @@ export class Carrier {
     let fee: bigint;
     let replaced = false;
     if (existing && params.roundId > existing.round) {
-      // Keyed replacement: same key, bump the fee by the probed minimum (default 10%).
       const bumpBps = BigInt(probes.replacementBumpBps);
       fee = existing.fee + (existing.fee * bumpBps) / 10_000n + 1n;
       replaced = true;
@@ -65,26 +60,26 @@ export class Carrier {
       roundId: params.roundId,
       sequence: params.sequence,
       maxFeePerGas: fee,
-      maxPriorityFeePerGas: fee,
       verifyGas: params.verifyGas,
       verifyStateLimit: params.verifyStateLimit,
       executeGas: params.executeGas,
     });
 
-    await this.cfg.submit(serializeFrameTx(tx));
+    await this.cfg.submit(tx);
     this.pending.set(this.key(params.positionId), { tx, fee, round: params.roundId });
     return { submitted: true, replaced };
   }
 
-  /** Drop a pending liquidation (e.g. position became healthy / was rescued). */
   invalidate(positionId: bigint) {
     this.pending.delete(this.key(positionId));
   }
 
-  /** Total cost ceiling of a pending tx, for tank accounting / tests. */
+  /** Fee ceiling of a pending tx (fee * total execution gas), for tank accounting / tests. */
   pendingFeeCeiling(positionId: bigint): bigint {
     const p = this.pending.get(this.key(positionId));
-    return p ? p.fee * totalGas(p.tx) : 0n;
+    if (!p) return 0n;
+    const gas = p.tx.frames.reduce((s, f) => s + f.limits.execution, 0n);
+    return p.fee * gas;
   }
 
   pendingCount() {
