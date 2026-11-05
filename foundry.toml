@@ -14,6 +14,10 @@ bytecode_hash = "none"
 ffi = false
 memory_limit = 1073741824
 allow_internal_expect_revert = true
+# forge >= 1.8 defaults to isolate = true (each top-level test call is its own tx). Our tests set the
+# Aqua gate with TSTORE and read it in the next call, as happens inside one liquidation tx, and the
+# recorded mock gas numbers assume non-isolated calls. Pin the old behaviour explicitly.
+isolate = false
 fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read-write", path = "./test/vectors" },
