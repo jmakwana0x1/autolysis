@@ -8,8 +8,8 @@ import {RoundFeed} from "../../src/core/RoundFeed.sol";
 import {IERC20} from "../../src/interfaces/IERC20.sol";
 import {IRoundFeed} from "../../src/interfaces/IRoundFeed.sol";
 import {ISwapVenue} from "../../src/interfaces/ISwapVenue.sol";
-import {TankLedger} from "../../src/libraries/TankLedger.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockCurve} from "../mocks/MockCurve.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 import {MarketHandler} from "./MarketHandler.sol";
@@ -21,13 +21,14 @@ contract MarketInvariantTest is Test {
     AutolysisAccount account;
     RoundFeed feed;
     MockFrameEnv env;
-    MockERC20 col;
+    MockWETH col;
     MockERC20 usdc;
     MockCurve curve;
     MarketHandler handler;
 
     function setUp() public {
-        col = new MockERC20("COL", "COL", 18);
+        col = new MockWETH();
+        vm.deal(address(col), 1e24);
         usdc = new MockERC20("USDC", "USDC", 18);
         feed = new RoundFeed(address(this), 2e18);
         env = new MockFrameEnv();
@@ -104,15 +105,9 @@ contract MarketInvariantTest is Test {
         lastSoldOut = cur;
     }
 
-    /// Tank conservation: for every position, deposited == balance + billed (drift zero).
-    function invariant_tankDriftZero() public view {
-        uint256 n = handler.posCount();
-        for (uint256 i; i < n; ++i) {
-            TankLedger.Tank memory t = market.tank(handler.posAt(i));
-            assertEq(
-                int256(uint256(t.deposited)) - int256(uint256(t.balance)) - int256(uint256(t.billed)), 0, "tank drift"
-            );
-        }
+    /// Gas-fee conservation (H2): every bit of collateral billed as gas reached the account as ETH.
+    function invariant_feeBilledEqualsAccountEth() public view {
+        assertEq(market.totalFeeBilled(), address(account).balance, "fees billed != account ETH in");
     }
 
     function afterInvariant() public {

@@ -95,20 +95,24 @@ contract AutolysisAccount {
         // In a SENDER frame the caller is tx.sender, which is this account itself. Nothing else may
         // call execute, or a stranger could loop failing attempts and bill the borrower's tank (C1).
         if (msg.sender != address(this)) revert NotSelf();
-        // Reservation guards the tank; if it can't back an attempt, do nothing (no revert, no bill).
-        if (market.tankHeadroom(positionId, failedAttemptCap) == 0) return;
-        market.reserveAttempt(positionId);
-
-        try market.executeLiquidation(positionId, roundId, failedAttemptCap) returns (
+        // The fee is billed from the position's own collateral (H2), so there is no reservation to make.
+        // The cap is the transaction's MAX_COST (TXPARAM 0x06), read back through the frame env; the
+        // market bills min(MAX_COST, FEE_CAP_BPS * collateral sold) on success and min(MAX_COST,
+        // MAX_FAILED_GAS_BILL) on failure, so the borrower is never charged more than they signed for.
+        uint256 maxCost = env.load().feeParam;
+        try market.executeLiquidation(positionId, roundId, maxCost) returns (
             uint256 debtRepaid, uint256 collateralSold, uint256 fee
         ) {
             emit LiquidationOk(positionId, debtRepaid, collateralSold, fee);
         } catch {
-            // Failure path: bill at most the failed-attempt cap, release the reservation, return clean.
-            market.billFailedAttempt(positionId, failedAttemptCap);
-            emit LiquidationFailed(positionId, failedAttemptCap);
+            market.billFailedAttempt(positionId, maxCost);
+            emit LiquidationFailed(positionId, maxCost);
         }
     }
+
+    /// @notice The account holds ETH to pay for its own frame transactions; the market funds it from
+    ///         the liquidated position's collateral (H2).
+    receive() external payable {}
 
     function _decodeExecuteArgs(TxView memory v) internal pure returns (uint256 positionId, uint256 roundId) {
         // The execute frame is frame 1 in the canonical shape; guard length before decoding.

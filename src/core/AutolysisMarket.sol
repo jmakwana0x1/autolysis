@@ -6,7 +6,7 @@ import {IRoundFeed} from "../interfaces/IRoundFeed.sol";
 import {ISwapVenue} from "../interfaces/ISwapVenue.sol";
 import {ISelfLiquidatingMarket} from "../interfaces/ISelfLiquidatingMarket.sol";
 import {LiquidationMath, Math} from "../libraries/LiquidationMath.sol";
-import {TankLedger} from "../libraries/TankLedger.sol";
+import {IWETH} from "../interfaces/IWETH.sol";
 
 /// @title AutolysisMarket
 /// @notice Single-collateral lending market that liquidates positions gradually by selling collateral
@@ -17,8 +17,6 @@ import {TankLedger} from "../libraries/TankLedger.sol";
 /// @dev Debt token is USDC-like (the tank and depositor accounting live in it). Collateral is a
 ///      separate ERC20. All health math is in LiquidationMath (WAD).
 contract AutolysisMarket is ISelfLiquidatingMarket {
-    using TankLedger for TankLedger.Tank;
-
     uint256 internal constant WAD = 1e18;
 
     struct Position {
@@ -35,15 +33,17 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     address public immutable account; // the only address allowed to liquidate
     address public owner; // governance: sets venue, liqThreshold
 
+    uint256 public constant FEE_CAP_BPS = 30; // gas fee cap: 0.3% of the collateral sold
+    uint256 public maxFailedGasBill = 0.02e18; // MAX_FAILED_GAS_BILL (wei of WETH collateral)
+    uint256 public totalFeeBilled; // lifetime collateral taken as gas fees (ETH sent to the account)
+
     uint256 public liqThreshold = 0.8e18; // L (WAD)
     uint256 public targetHf = 1.05e18; // T (WAD)
     uint256 public slippage = 0.01e18; // s: assumed sale haircut the step prices against (WAD)
     uint256 public constant CLASSIC_THRESHOLD = 0.95e18; // for the classic-market comparison
-    uint256 public feeCap = 0.01e18; // max fee billed per attempt, in debt token
 
     uint256 public nextPositionId = 1;
     mapping(uint256 => Position) public positions;
-    mapping(uint256 => TankLedger.Tank) internal tanks;
     mapping(uint256 => uint256) public lastLiquidatedRound; // highest round a step used for this position
 
     uint256 public totalCollateral; // sum of position collateral (accounting invariant anchor)
@@ -64,7 +64,6 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     event Repaid(uint256 indexed id, uint256 amount);
     event Deposited(uint256 indexed id, uint256 amount);
     event Withdrawn(uint256 indexed id, uint256 amount);
-    event TankRefilled(uint256 indexed id, uint256 amount);
     event Liquidated(uint256 indexed id, uint256 roundId, uint256 debtRepaid, uint256 collateralSold, uint256 fee);
 
     constructor(IERC20 collateral_, IERC20 debt_, IRoundFeed feed_, address account_) {
@@ -84,10 +83,10 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         venue = v;
     }
 
-    function setParams(uint256 lt, uint256 target, uint256 cap) external onlyOwner {
+    function setParams(uint256 lt, uint256 target, uint256 maxFailedBill) external onlyOwner {
         liqThreshold = lt;
         targetHf = target;
-        feeCap = cap;
+        maxFailedGasBill = maxFailedBill;
     }
 
     function setSlippage(uint256 s) external onlyOwner {
@@ -142,13 +141,6 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         emit Repaid(id, amount);
     }
 
-    function refillTank(uint256 id, uint256 amount) external {
-        require(positions[id].owner != address(0), "no position");
-        debtToken.transferFrom(msg.sender, address(this), amount);
-        tanks[id].refill(amount);
-        emit TankRefilled(id, amount);
-    }
-
     // --- liquidation (account only) ---
 
     /// @notice One gradual step. Only the account may call. Billing is always <= feeCap. The account
@@ -186,11 +178,10 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         pos.liquidations += 1;
         if (roundId > lastLiquidatedRound[positionId]) lastLiquidatedRound[positionId] = roundId;
 
-        // Any surplus proceeds above the cleared debt are credited back to the position owner's claim
-        // by reducing nothing here (kept as market USDC backing depositors); conservation holds via
-        // totalDebt. Fee billed to the tank, capped.
-        feeBilled = cap < feeCap ? cap : feeCap;
-        tanks[positionId].settle(feeBilled);
+        // Bill the gas fee in collateral (WETH), capped at MAX_COST and FEE_CAP_BPS of the sale, unwrap
+        // it and send the ETH to the self-paying account. No separate USDC tank (H2).
+        uint256 feeCapByBps = step.collateralToSell * FEE_CAP_BPS / 10_000;
+        feeBilled = _billFeeFromCollateral(positionId, _min(cap, feeCapByBps));
 
         debtRepaid = cleared;
         collateralSold = step.collateralToSell;
@@ -198,18 +189,32 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         emit Liquidated(positionId, roundId, cleared, step.collateralToSell, feeBilled);
     }
 
-    /// @notice Reserve tank headroom for an attempt; the account calls this before submitting.
-    function reserveAttempt(uint256 positionId) external {
-        if (msg.sender != account) revert NotAccount();
-        tanks[positionId].reserve(feeCap);
-    }
-
-    /// @notice Bill a failed attempt (no state change to the position) at the failed-attempt cap.
+    /// @notice Bill a failed attempt in collateral, capped at MAX_COST and MAX_FAILED_GAS_BILL.
     function billFailedAttempt(uint256 positionId, uint256 cap) external {
         if (msg.sender != account) revert NotAccount();
-        uint256 bill = cap < feeCap ? cap : feeCap;
-        tanks[positionId].settle(bill);
+        _billFeeFromCollateral(positionId, _min(cap, maxFailedGasBill));
     }
+
+    /// @dev Take `want` WETH collateral from the position (never more than it holds), unwrap it, and send
+    ///      the ETH to the account. Returns the amount actually billed. This is the only path that moves
+    ///      a position's collateral into gas, so the borrower is never billed more than `want` <= cap.
+    function _billFeeFromCollateral(uint256 positionId, uint256 want) internal returns (uint256 fee) {
+        Position storage pos = positions[positionId];
+        fee = want < pos.collateral ? want : pos.collateral;
+        if (fee == 0) return 0;
+        pos.collateral -= fee;
+        totalCollateral -= fee;
+        totalFeeBilled += fee;
+        IWETH(address(collateralToken)).withdraw(fee);
+        (bool ok,) = account.call{value: fee}("");
+        require(ok, "gas transfer failed");
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    receive() external payable {}
 
     // --- views ---
 
@@ -226,14 +231,6 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
 
     function liquidationCount(uint256 id) external view returns (uint256) {
         return positions[id].liquidations;
-    }
-
-    function tankHeadroom(uint256 id, uint256 cap) external view returns (uint256) {
-        return tanks[id].headroom(cap == 0 ? feeCap : cap);
-    }
-
-    function tank(uint256 id) external view returns (TankLedger.Tank memory) {
-        return tanks[id];
     }
 
     function _hf(Position storage pos) internal view returns (uint256) {

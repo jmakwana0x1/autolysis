@@ -9,10 +9,10 @@ import {IERC20} from "../../src/interfaces/IERC20.sol";
 import {IRoundFeed} from "../../src/interfaces/IRoundFeed.sol";
 import {ISwapVenue} from "../../src/interfaces/ISwapVenue.sol";
 import {FirewallRules} from "../../src/libraries/FirewallRules.sol";
-import {TankLedger} from "../../src/libraries/TankLedger.sol";
 import {TxView, FrameView, FrameTypes} from "../../src/frame/FrameTypes.sol";
 import {ProbeConstants} from "../../src/generated/ProbeConstants.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockCurve} from "../mocks/MockCurve.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 
@@ -20,7 +20,7 @@ import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 ///         (every devnet scene has a matching mock test). Each asserts the expected outcome from the
 ///         plan's adversarial table.
 contract AdversarialTest is Test {
-    MockERC20 col;
+    MockWETH col;
     MockERC20 usdc;
     RoundFeed feed;
     MockFrameEnv env;
@@ -31,7 +31,8 @@ contract AdversarialTest is Test {
     uint256 posId;
 
     function setUp() public {
-        col = new MockERC20("COL", "COL", 18);
+        col = new MockWETH();
+        vm.deal(address(col), 1_000 ether);
         usdc = new MockERC20("USDC", "USDC", 18);
         feed = new RoundFeed(address(this), 2e18);
         env = new MockFrameEnv();
@@ -53,7 +54,6 @@ contract AdversarialTest is Test {
         market.borrow(posId, 150e18); // HF 1.2 at price 2.0
         usdc.mint(borrower, 1e18);
         usdc.approve(address(market), type(uint256).max);
-        market.refillTank(posId, 1e18);
         vm.stopPrank();
     }
 
@@ -162,16 +162,16 @@ contract AdversarialTest is Test {
         vm.prank(address(curve));
         usdc.transfer(address(0xdead), bal);
 
-        TankLedger.Tank memory before = market.tank(posId);
+        uint256 before = market.totalFeeBilled();
         TxView memory v = _canonical(roundId);
         env.set(v);
         vm.prank(address(account));
         account.verify();
         vm.prank(address(account));
         account.execute(posId, roundId);
-        TankLedger.Tank memory afterT = market.tank(posId);
-        uint256 billed = afterT.billed - before.billed;
-        assertLe(billed, 0.01e18, "failed-attempt billing exceeded cap");
+        uint256 billed = market.totalFeeBilled() - before;
+        // Failed attempts bill min(MAX_COST, MAX_FAILED_GAS_BILL); never more than the cap.
+        assertLe(billed, market.maxFailedGasBill(), "failed-attempt billing exceeded cap");
         assertGt(billed, 0, "a failed attempt should still bill");
     }
 

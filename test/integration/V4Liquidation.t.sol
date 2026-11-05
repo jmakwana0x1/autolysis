@@ -96,7 +96,6 @@ contract V4LiquidationTest is Test, Deployers {
         market.borrow(posId, 150e18);
         usdc.mint(borrower, 10e18);
         usdc.approve(address(market), type(uint256).max);
-        market.refillTank(posId, 10e18);
         vm.stopPrank();
     }
 
@@ -114,7 +113,7 @@ contract V4LiquidationTest is Test, Deployers {
         v.nonceKeys = new uint256[](1);
         v.nonceKeys[0] = FirewallRules.nonceKey(address(market), posId);
         v.sequence = seq;
-        v.feeParam = account.feeCapTotal();
+        v.feeParam = 0; // no gas fee billed here (currency0 is not WETH); H2 fee path has its own test
         v.frames = new FrameView[](2);
         v.frames[0] = FrameView(
             FrameTypes.MODE_VERIFY,

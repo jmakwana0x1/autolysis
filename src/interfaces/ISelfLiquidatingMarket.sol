@@ -11,5 +11,4 @@ interface ISelfLiquidatingMarket {
 
     function healthFactor(uint256 positionId) external view returns (uint256);
     function liquidationCount(uint256 positionId) external view returns (uint256);
-    function tankHeadroom(uint256 positionId, uint256 feeCap) external view returns (uint256);
 }

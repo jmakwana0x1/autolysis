@@ -3,13 +3,13 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {AutolysisMarket} from "../../src/core/AutolysisMarket.sol";
-import {TankLedger} from "../../src/libraries/TankLedger.sol";
 import {AutolysisAccount} from "../../src/core/AutolysisAccount.sol";
 import {RoundFeed} from "../../src/core/RoundFeed.sol";
 import {FirewallRules} from "../../src/libraries/FirewallRules.sol";
 import {TxView, FrameView, FrameTypes} from "../../src/frame/FrameTypes.sol";
 import {ProbeConstants} from "../../src/generated/ProbeConstants.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 
 /// @notice Randomly calls borrow, repay, deposit, withdraw, price update, liquidation through the
@@ -20,7 +20,7 @@ contract MarketHandler is Test {
     AutolysisAccount public account;
     RoundFeed public feed;
     MockFrameEnv public env;
-    MockERC20 public col;
+    MockWETH public col;
     MockERC20 public usdc;
 
     uint256[] public posIds;
@@ -37,7 +37,7 @@ contract MarketHandler is Test {
     address constant ALICE = address(0xA11CE);
     address constant STRANGER = address(0x5748);
 
-    constructor(AutolysisMarket m, AutolysisAccount a, RoundFeed f, MockFrameEnv e, MockERC20 c, MockERC20 u) {
+    constructor(AutolysisMarket m, AutolysisAccount a, RoundFeed f, MockFrameEnv e, MockWETH c, MockERC20 u) {
         market = m;
         account = a;
         feed = f;
@@ -66,7 +66,6 @@ contract MarketHandler is Test {
         // fund tank
         usdc.mint(ALICE, 1e18);
         usdc.approve(address(market), type(uint256).max);
-        market.refillTank(id, 1e18);
         vm.stopPrank();
         ghostDeposits += 1e18;
         posIds.push(id);
@@ -104,7 +103,6 @@ contract MarketHandler is Test {
         vm.startPrank(ALICE);
         usdc.mint(ALICE, amt);
         usdc.approve(address(market), type(uint256).max);
-        market.refillTank(id, amt);
         vm.stopPrank();
         ghostDeposits += amt;
     }
@@ -175,10 +173,9 @@ contract MarketHandler is Test {
     function strangerExecutes(uint256 seed, uint256 roundId) public {
         uint256 id = _pos(seed);
         if (id == 0) return;
-        TankLedger.Tank memory before = market.tank(id);
+        uint256 before = market.totalFeeBilled();
         try account.execute(id, roundId) {} catch {}
-        TankLedger.Tank memory afterT = market.tank(id);
-        if (afterT.billed > before.billed) strangerExecuteBilled += 1;
+        if (market.totalFeeBilled() > before) strangerExecuteBilled += 1;
     }
 
     /// A stranger must never be able to liquidate directly.

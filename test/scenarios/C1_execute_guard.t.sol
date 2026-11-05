@@ -9,6 +9,7 @@ import {IERC20} from "../../src/interfaces/IERC20.sol";
 import {IRoundFeed} from "../../src/interfaces/IRoundFeed.sol";
 import {ISwapVenue} from "../../src/interfaces/ISwapVenue.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockCurve} from "../mocks/MockCurve.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 
@@ -17,12 +18,13 @@ contract C1ExecuteGuardTest is Test {
     AutolysisMarket market;
     AutolysisAccount account;
     RoundFeed feed;
-    MockERC20 col;
+    MockWETH col;
     MockERC20 usdc;
     uint256 posId;
 
     function setUp() public {
-        col = new MockERC20("COL", "COL", 18);
+        col = new MockWETH();
+        vm.deal(address(col), 1_000 ether);
         usdc = new MockERC20("USDC", "USDC", 18);
         feed = new RoundFeed(address(this), 2e18);
         MockFrameEnv env = new MockFrameEnv();
@@ -43,7 +45,6 @@ contract C1ExecuteGuardTest is Test {
         market.borrow(posId, 150e18);
         usdc.mint(address(this), 1e18);
         usdc.approve(address(market), type(uint256).max);
-        market.refillTank(posId, 1e18);
     }
 
     function test_strangerCannotCallExecute() public {

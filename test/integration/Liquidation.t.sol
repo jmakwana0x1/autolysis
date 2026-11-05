@@ -12,13 +12,14 @@ import {FirewallRules} from "../../src/libraries/FirewallRules.sol";
 import {TxView, FrameView, FrameTypes} from "../../src/frame/FrameTypes.sol";
 import {ProbeConstants} from "../../src/generated/ProbeConstants.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockCurve} from "../mocks/MockCurve.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 
 /// @notice Phase 1 exit: a first self-paid liquidation through the plain curve, driven the way the
 ///         devnet runs it — the carrier builds the canonical frame tx, VERIFY approves, SENDER executes.
 contract LiquidationTest is Test {
-    MockERC20 col;
+    MockWETH col;
     MockERC20 usdc;
     RoundFeed feed;
     MockFrameEnv env;
@@ -30,7 +31,8 @@ contract LiquidationTest is Test {
     uint256 posId;
 
     function setUp() public {
-        col = new MockERC20("Collateral", "COL", 18);
+        col = new MockWETH();
+        vm.deal(address(col), 1_000 ether);
         usdc = new MockERC20("USD Coin", "USDC", 18);
         feed = new RoundFeed(address(this), 2e18); // 1 COL = 2 USDC
 
@@ -57,7 +59,6 @@ contract LiquidationTest is Test {
         // Fund the gas tank.
         usdc.mint(borrower, 1e18);
         usdc.approve(address(market), type(uint256).max);
-        market.refillTank(posId, 1e18);
         vm.stopPrank();
 
         assertGe(market.healthFactor(posId), 1e18, "should start healthy");

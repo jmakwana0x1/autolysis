@@ -12,6 +12,7 @@ import {FirewallRules} from "../../src/libraries/FirewallRules.sol";
 import {TxView, FrameView, FrameTypes} from "../../src/frame/FrameTypes.sol";
 import {ProbeConstants} from "../../src/generated/ProbeConstants.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockWETH} from "../mocks/MockWETH.sol";
 import {MockCurve} from "../mocks/MockCurve.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
 
@@ -23,12 +24,13 @@ contract C6HaircutTest is Test {
     AutolysisAccount account;
     MockCurve curve;
     RoundFeed feed;
-    MockERC20 col;
+    MockWETH col;
     MockERC20 usdc;
     uint256 posId;
 
     function setUp() public {
-        col = new MockERC20("COL", "COL", 18);
+        col = new MockWETH();
+        vm.deal(address(col), 1_000 ether);
         usdc = new MockERC20("USDC", "USDC", 18);
         feed = new RoundFeed(address(this), 2e18);
         env = new MockFrameEnv();
@@ -49,7 +51,6 @@ contract C6HaircutTest is Test {
         market.borrow(posId, 150e18); // HF = 100*2*0.8/150 = 1.0667
         usdc.mint(address(this), 10e18);
         usdc.approve(address(market), type(uint256).max);
-        market.refillTank(posId, 10e18);
     }
 
     function _tx(uint256 roundId, uint256 seq) internal view returns (TxView memory v) {
