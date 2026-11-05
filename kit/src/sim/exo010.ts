@@ -1,77 +1,118 @@
-// EXO-010 simulator: replays crash and bounce traces through the ERC-8421 reputation rules, with and
-// without the proposed rule, producing reproducible with/without series for the EF write-up.
+// EXO-010 simulator: replays crash/bounce traces through the ERC-8421 reputation rules, under the
+// baseline rule and the proposed EXO-010 rule, producing reproducible with/without series.
 //
-// Reputation model (draft ERC-8421 as the sidecar implements it):
-//   - Each carrier has a reputation score in [0, 1], starting at START.
-//   - A liquidation the carrier gets INCLUDED raises reputation toward 1.
-//   - A liquidation the carrier had pending that becomes INVALID (price recovered / rescued) is "seen
-//     but not included". Under the BASELINE rule every such miss is penalized. Under the PROPOSED rule,
-//     a miss caused by a price move that invalidated the whole pending set (a bounce) is forgiven, so
-//     honest carriers are not throttled for the market recovering.
-//   - A keyed REPLACEMENT (same key, higher fee, new round) must not itself move reputation.
-// A carrier below THROTTLE is rate-limited by the mempool.
+// Rules modeled (as the sidecar implements them):
+//   - Two integer counters per sender: `seen` and `included`.
+//   - A liquidation the carrier gets INCLUDED: seen++ and included++.
+//   - A liquidation SEEN but not included (a miss): seen++ (baseline).
+//   - REPUTATION-040: a keyed REPLACEMENT adds nothing to `seen`.
+//   - Hourly DECAY: on each hour boundary, seen = floor(seen*23/24), included = floor(included*23/24).
+//   - max_seen = floor(seen/10). Status from max_seen vs included:
+//       ACTIVE     if max_seen <= included + 10
+//       THROTTLED  if max_seen <= included + 50   (rate-limited to 4 txs/block)
+//       BANNED     otherwise
+//   - REPUTATION-330: a staked sender absorbs other entities' failures (their misses don't raise its
+//     seen). Modeled by the `staked` flag: a miss marked `external` does not count against a staked
+//     sender.
+//   - EXO-010 (proposed): a tx invalidated by an outside state change (the round moved, the borrower
+//     repaid) decrements `seen` instead of counting as a miss, so a market-wide bounce does not throttle
+//     honest carriers.
 
-export const START = 0.8;
-export const THROTTLE = 0.5;
-const UP = 0.02; // reward per inclusion
-const DOWN = 0.05; // penalty per non-forgiven miss
+export type Status = "ACTIVE" | "THROTTLED" | "BANNED";
+export const ACTIVE_MARGIN = 10;
+export const THROTTLE_MARGIN = 50;
 
 export type Event =
-  | { t: number; kind: "included" }
-  | { t: number; kind: "miss"; bounce: boolean } // pending invalidated; bounce = market-wide recovery
-  | { t: number; kind: "replacement" };
+  | { kind: "included" }
+  | { kind: "miss"; external: boolean } // external = invalidated by an outside state change (a bounce)
+  | { kind: "replacement" }
+  | { kind: "hour" }; // an hour boundary: apply decay
 
-export type Point = { t: number; baseline: number; proposed: number };
+type Counters = { seen: number; included: number };
 
-function clamp(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
+function decay(c: Counters): Counters {
+  return { seen: Math.floor((c.seen * 23) / 24), included: Math.floor((c.included * 23) / 24) };
 }
 
-export function simulate(trace: Event[]): { series: Point[]; baselineFinal: number; proposedFinal: number } {
-  let baseline = START;
-  let proposed = START;
-  const series: Point[] = [{ t: 0, baseline, proposed }];
-  for (const e of trace) {
+function maxSeen(c: Counters): number {
+  return Math.floor(c.seen / 10);
+}
+
+export function status(c: Counters): Status {
+  const ms = maxSeen(c);
+  if (ms <= c.included + ACTIVE_MARGIN) return "ACTIVE";
+  if (ms <= c.included + THROTTLE_MARGIN) return "THROTTLED";
+  return "BANNED";
+}
+
+export type Point = { t: number; baselineMaxSeen: number; proposedMaxSeen: number; throttleLine: number };
+
+/** Run a trace under both rules. `staked` applies REPUTATION-330 to external misses. */
+export function simulate(trace: Event[], opts: { staked?: boolean } = {}): {
+  series: Point[];
+  baseline: Counters;
+  proposed: Counters;
+  baselineStatus: Status;
+  proposedStatus: Status;
+} {
+  let baseline: Counters = { seen: 0, included: 0 };
+  let proposed: Counters = { seen: 0, included: 0 };
+  const staked = opts.staked ?? false;
+  const series: Point[] = [pt(0, baseline, proposed)];
+  trace.forEach((e, i) => {
     switch (e.kind) {
       case "included":
-        baseline = clamp(baseline + UP);
-        proposed = clamp(proposed + UP);
+        baseline = { seen: baseline.seen + 1, included: baseline.included + 1 };
+        proposed = { seen: proposed.seen + 1, included: proposed.included + 1 };
         break;
       case "miss":
-        baseline = clamp(baseline - DOWN); // baseline penalizes every miss
-        if (!e.bounce) proposed = clamp(proposed - DOWN); // proposed forgives bounce-caused misses
+        // Baseline: every miss raises seen (unless a staked sender absorbs an external failure).
+        if (!(staked && e.external)) baseline = { ...baseline, seen: baseline.seen + 1 };
+        // Proposed: an outside-caused miss decrements seen (EXO-010); a genuine miss still raises it.
+        if (e.external) proposed = { ...proposed, seen: Math.max(0, proposed.seen - 1) };
+        else proposed = { ...proposed, seen: proposed.seen + 1 };
         break;
       case "replacement":
-        // no reputation change under either rule
+        // REPUTATION-040: no counter change under either rule.
+        break;
+      case "hour":
+        baseline = decay(baseline);
+        proposed = decay(proposed);
         break;
     }
-    series.push({ t: e.t, baseline, proposed });
-  }
-  return { series, baselineFinal: baseline, proposedFinal: proposed };
+    series.push(pt(i + 1, baseline, proposed));
+  });
+  return {
+    series,
+    baseline,
+    proposed,
+    baselineStatus: status(baseline),
+    proposedStatus: status(proposed),
+  };
 }
 
-/** Whether a score is above the throttle line at every point (honest carriers should stay above). */
-export function throttledAt(series: Point[], which: "baseline" | "proposed"): number[] {
-  return series.filter((p) => p[which] < THROTTLE).map((p) => p.t);
+function pt(t: number, b: Counters, p: Counters): Point {
+  return {
+    t,
+    baselineMaxSeen: maxSeen(b),
+    proposedMaxSeen: maxSeen(p),
+    throttleLine: b.included + THROTTLE_MARGIN,
+  };
 }
 
-/** A canonical oracle-bounce trace: a crash triggers many pending liquidations, then the price bounces
- *  back and invalidates them all at once (the EXO-010 scenario in the plan). */
+/** The canonical oracle-bounce trace: a crash includes a few liquidations, then the price bounces and
+ *  invalidates every remaining pending liquidation at once (external misses). */
 export function bounceTrace(pendingDuringCrash: number): Event[] {
   const trace: Event[] = [];
-  let t = 1;
-  // during the crash a few liquidations are legitimately included
-  for (let i = 0; i < 3; i++) trace.push({ t: t++, kind: "included" });
-  // then the price bounces: every remaining pending liquidation misses, all from the same move
-  for (let i = 0; i < pendingDuringCrash; i++) trace.push({ t: t++, kind: "miss", bounce: true });
+  for (let i = 0; i < 3; i++) trace.push({ kind: "included" });
+  for (let i = 0; i < pendingDuringCrash; i++) trace.push({ kind: "miss", external: true });
   return trace;
 }
 
-/** A replacement storm: the same liquidation is rebroadcast with fee bumps across rounds. */
+/** A replacement storm: the same liquidation rebroadcast with fee bumps, then one inclusion. */
 export function replacementTrace(rounds: number): Event[] {
   const trace: Event[] = [];
-  let t = 1;
-  for (let i = 0; i < rounds; i++) trace.push({ t: t++, kind: "replacement" });
-  trace.push({ t: t++, kind: "included" });
+  for (let i = 0; i < rounds; i++) trace.push({ kind: "replacement" });
+  trace.push({ kind: "included" });
   return trace;
 }

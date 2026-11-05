@@ -71,39 +71,41 @@
   <header>
     <p class="eyebrow">Autolysis · EXO-010 simulator</p>
     <h1>Does the bounce rule throttle honest carriers?</h1>
-    <p class="lede">A crash opens 150 pending liquidations; then the oracle bounces back and invalidates
-      them all at once. Under today's ERC-8421 rule every missed pending counts against the carrier.
-      The proposed rule forgives misses that a market-wide bounce caused. Same replayed trace, two rules.</p>
+    <p class="lede">A crash opens 600 pending liquidations; then the oracle bounces back and invalidates them all at once.
+      Under today's ERC-8421 rule every invalidated pending still counts toward the carrier's seen count,
+      pushing max_seen (= seen / 10) past the throttle line. The proposed EXO-010 rule decrements seen for
+      a miss caused by an outside state change, so a market-wide bounce doesn't throttle honest carriers.</p>
   </header>
 
   <div class="tiles">
     <div class="tile baseline">
       <span class="k">Baseline rule · final</span>
-      <span class="v" id="t-base">0.00</span>
-      <span class="n">throttled at event <b id="t-cross">21</b></span>
+      <span class="v" id="t-base">BANNED</span>
+      <span class="n">max_seen <b id="t-bms">60</b>, over the throttle line</span>
     </div>
     <div class="tile proposed">
-      <span class="k">Proposed rule · final</span>
-      <span class="v" id="t-prop">0.86</span>
-      <span class="n">never crosses the throttle</span>
+      <span class="k">Proposed rule</span>
+      <span class="v" id="t-prop">ACTIVE</span>
+      <span class="n">max_seen <b id="t-pms">0</b>, never throttled</span>
     </div>
     <div class="tile">
       <span class="k">Throttle line</span>
-      <span class="v" id="t-thr">0.50</span>
-      <span class="n">below this, the mempool rate-limits</span>
+      <span class="v">included + 50</span>
+      <span class="n">above this, the sender is rate-limited then banned</span>
     </div>
   </div>
 
   <section class="card">
-    <h2>Carrier reputation over the replayed trace</h2>
-    <p class="sub">Reputation in [0, 1] vs. event index. 3 inclusions during the crash, then 150 bounce misses.</p>
+    <h2>max_seen vs. the throttle line over the replayed trace</h2>
+    <p class="sub">ERC-8421 counts each seen-but-not-included liquidation; max_seen = seen / 10. 3 inclusions
+      during the crash, then 600 pending invalidated by the bounce.</p>
     <div class="legend">
-      <span><i class="swatch" style="background:var(--proposed)"></i> Proposed rule</span>
+      <span><i class="swatch" style="background:var(--proposed)"></i> Proposed rule (bounce forgiven)</span>
       <span><i class="swatch" style="background:var(--baseline)"></i> Baseline rule</span>
-      <span><i class="swatch dash"></i> Throttle 0.50</span>
+      <span><i class="swatch dash"></i> Throttle (included + 50)</span>
     </div>
     <div class="chartbox">
-      <svg id="chart" viewBox="0 0 720 360" role="img" aria-label="Reputation over time: the baseline rule falls below the throttle and reaches zero; the proposed rule holds at 0.86."></svg>
+      <svg id="chart" viewBox="0 0 720 360" role="img" aria-label="max_seen over the trace: the baseline rule climbs past the throttle line (banned); the proposed rule stays at zero."></svg>
       <div class="tip" id="tip"></div>
     </div>
   </section>
@@ -115,19 +117,20 @@
     </div>
     <div id="tablebox" class="tablebox" hidden>
       <table>
-        <thead><tr><th>Event</th><th>Baseline</th><th>Proposed</th></tr></thead>
+        <thead><tr><th>Event</th><th>Baseline max_seen</th><th>Proposed max_seen</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
     <p class="note" style="margin-top:14px">Numbers come from <code>kit/src/sim/exo010.ts</code> replaying
-      <code>bounceTrace(150)</code> — the same function the test suite checks for reproducibility. The
-      baseline reaches the throttle because each of the 150 bounce misses subtracts a penalty; the
-      proposed rule applies no penalty to a miss flagged as caused by the bounce.</p>
+      <code>bounceTrace(600)</code> through the ERC-8421 counters (seen / included, hourly decay,
+      max_seen = seen/10, ACTIVE/THROTTLED/BANNED at included + 10 / + 50) — the same function the test
+      suite checks. The baseline crosses the throttle because each bounce-invalidated pending still
+      counts as seen; the proposed rule decrements seen for an outside-caused miss (EXO-010).</p>
   </section>
 </div>
 
 <script>
-const DATA = {"throttle":0.5,"start":0.8,"baselineFinal":0,"proposedFinal":0.86,"crashIncluded":3,"bounceMisses":150,"pts":[[0,0.8,0.8],[1,0.82,0.82],[2,0.84,0.84],[3,0.86,0.86],[4,0.81,0.86],[5,0.76,0.86],[6,0.71,0.86],[7,0.66,0.86],[8,0.61,0.86],[9,0.56,0.86],[10,0.51,0.86],[11,0.46,0.86],[12,0.41,0.86],[13,0.36,0.86],[14,0.31,0.86],[15,0.26,0.86],[16,0.21,0.86],[17,0.16,0.86],[18,0.11,0.86],[19,0.06,0.86],[20,0.01,0.86],[21,0,0.86],[22,0,0.86],[23,0,0.86],[24,0,0.86],[25,0,0.86],[26,0,0.86],[27,0,0.86],[28,0,0.86],[29,0,0.86],[30,0,0.86],[31,0,0.86],[32,0,0.86],[33,0,0.86],[34,0,0.86],[35,0,0.86],[36,0,0.86],[37,0,0.86],[38,0,0.86],[39,0,0.86],[40,0,0.86],[41,0,0.86],[42,0,0.86],[43,0,0.86],[44,0,0.86],[45,0,0.86],[46,0,0.86],[47,0,0.86],[48,0,0.86],[49,0,0.86],[50,0,0.86],[51,0,0.86],[52,0,0.86],[53,0,0.86],[54,0,0.86],[55,0,0.86],[56,0,0.86],[57,0,0.86],[58,0,0.86],[59,0,0.86],[60,0,0.86],[61,0,0.86],[62,0,0.86],[63,0,0.86],[64,0,0.86],[65,0,0.86],[66,0,0.86],[67,0,0.86],[68,0,0.86],[69,0,0.86],[70,0,0.86],[71,0,0.86],[72,0,0.86],[73,0,0.86],[74,0,0.86],[75,0,0.86],[76,0,0.86],[77,0,0.86],[78,0,0.86],[79,0,0.86],[80,0,0.86],[81,0,0.86],[82,0,0.86],[83,0,0.86],[84,0,0.86],[85,0,0.86],[86,0,0.86],[87,0,0.86],[88,0,0.86],[89,0,0.86],[90,0,0.86],[91,0,0.86],[92,0,0.86],[93,0,0.86],[94,0,0.86],[95,0,0.86],[96,0,0.86],[97,0,0.86],[98,0,0.86],[99,0,0.86],[100,0,0.86],[101,0,0.86],[102,0,0.86],[103,0,0.86],[104,0,0.86],[105,0,0.86],[106,0,0.86],[107,0,0.86],[108,0,0.86],[109,0,0.86],[110,0,0.86],[111,0,0.86],[112,0,0.86],[113,0,0.86],[114,0,0.86],[115,0,0.86],[116,0,0.86],[117,0,0.86],[118,0,0.86],[119,0,0.86],[120,0,0.86],[121,0,0.86],[122,0,0.86],[123,0,0.86],[124,0,0.86],[125,0,0.86],[126,0,0.86],[127,0,0.86],[128,0,0.86],[129,0,0.86],[130,0,0.86],[131,0,0.86],[132,0,0.86],[133,0,0.86],[134,0,0.86],[135,0,0.86],[136,0,0.86],[137,0,0.86],[138,0,0.86],[139,0,0.86],[140,0,0.86],[141,0,0.86],[142,0,0.86],[143,0,0.86],[144,0,0.86],[145,0,0.86],[146,0,0.86],[147,0,0.86],[148,0,0.86],[149,0,0.86],[150,0,0.86],[151,0,0.86],[152,0,0.86],[153,0,0.86]]};
+const DATA = {"pts": [[0, 0, 0, 50], [1, 0, 0, 51], [2, 0, 0, 52], [3, 0, 0, 53], [4, 0, 0, 53], [5, 0, 0, 53], [6, 0, 0, 53], [7, 0, 0, 53], [8, 0, 0, 53], [9, 0, 0, 53], [10, 1, 0, 53], [11, 1, 0, 53], [12, 1, 0, 53], [13, 1, 0, 53], [14, 1, 0, 53], [15, 1, 0, 53], [16, 1, 0, 53], [17, 1, 0, 53], [18, 1, 0, 53], [19, 1, 0, 53], [20, 2, 0, 53], [21, 2, 0, 53], [22, 2, 0, 53], [23, 2, 0, 53], [24, 2, 0, 53], [25, 2, 0, 53], [26, 2, 0, 53], [27, 2, 0, 53], [28, 2, 0, 53], [29, 2, 0, 53], [30, 3, 0, 53], [31, 3, 0, 53], [32, 3, 0, 53], [33, 3, 0, 53], [34, 3, 0, 53], [35, 3, 0, 53], [36, 3, 0, 53], [37, 3, 0, 53], [38, 3, 0, 53], [39, 3, 0, 53], [40, 4, 0, 53], [41, 4, 0, 53], [42, 4, 0, 53], [43, 4, 0, 53], [44, 4, 0, 53], [45, 4, 0, 53], [46, 4, 0, 53], [47, 4, 0, 53], [48, 4, 0, 53], [49, 4, 0, 53], [50, 5, 0, 53], [51, 5, 0, 53], [52, 5, 0, 53], [53, 5, 0, 53], [54, 5, 0, 53], [55, 5, 0, 53], [56, 5, 0, 53], [57, 5, 0, 53], [58, 5, 0, 53], [59, 5, 0, 53], [60, 6, 0, 53], [61, 6, 0, 53], [62, 6, 0, 53], [63, 6, 0, 53], [64, 6, 0, 53], [65, 6, 0, 53], [66, 6, 0, 53], [67, 6, 0, 53], [68, 6, 0, 53], [69, 6, 0, 53], [70, 7, 0, 53], [71, 7, 0, 53], [72, 7, 0, 53], [73, 7, 0, 53], [74, 7, 0, 53], [75, 7, 0, 53], [76, 7, 0, 53], [77, 7, 0, 53], [78, 7, 0, 53], [79, 7, 0, 53], [80, 8, 0, 53], [81, 8, 0, 53], [82, 8, 0, 53], [83, 8, 0, 53], [84, 8, 0, 53], [85, 8, 0, 53], [86, 8, 0, 53], [87, 8, 0, 53], [88, 8, 0, 53], [89, 8, 0, 53], [90, 9, 0, 53], [91, 9, 0, 53], [92, 9, 0, 53], [93, 9, 0, 53], [94, 9, 0, 53], [95, 9, 0, 53], [96, 9, 0, 53], [97, 9, 0, 53], [98, 9, 0, 53], [99, 9, 0, 53], [100, 10, 0, 53], [101, 10, 0, 53], [102, 10, 0, 53], [103, 10, 0, 53], [104, 10, 0, 53], [105, 10, 0, 53], [106, 10, 0, 53], [107, 10, 0, 53], [108, 10, 0, 53], [109, 10, 0, 53], [110, 11, 0, 53], [111, 11, 0, 53], [112, 11, 0, 53], [113, 11, 0, 53], [114, 11, 0, 53], [115, 11, 0, 53], [116, 11, 0, 53], [117, 11, 0, 53], [118, 11, 0, 53], [119, 11, 0, 53], [120, 12, 0, 53], [121, 12, 0, 53], [122, 12, 0, 53], [123, 12, 0, 53], [124, 12, 0, 53], [125, 12, 0, 53], [126, 12, 0, 53], [127, 12, 0, 53], [128, 12, 0, 53], [129, 12, 0, 53], [130, 13, 0, 53], [131, 13, 0, 53], [132, 13, 0, 53], [133, 13, 0, 53], [134, 13, 0, 53], [135, 13, 0, 53], [136, 13, 0, 53], [137, 13, 0, 53], [138, 13, 0, 53], [139, 13, 0, 53], [140, 14, 0, 53], [141, 14, 0, 53], [142, 14, 0, 53], [143, 14, 0, 53], [144, 14, 0, 53], [145, 14, 0, 53], [146, 14, 0, 53], [147, 14, 0, 53], [148, 14, 0, 53], [149, 14, 0, 53], [150, 15, 0, 53], [151, 15, 0, 53], [152, 15, 0, 53], [153, 15, 0, 53], [154, 15, 0, 53], [155, 15, 0, 53], [156, 15, 0, 53], [157, 15, 0, 53], [158, 15, 0, 53], [159, 15, 0, 53], [160, 16, 0, 53], [161, 16, 0, 53], [162, 16, 0, 53], [163, 16, 0, 53], [164, 16, 0, 53], [165, 16, 0, 53], [166, 16, 0, 53], [167, 16, 0, 53], [168, 16, 0, 53], [169, 16, 0, 53], [170, 17, 0, 53], [171, 17, 0, 53], [172, 17, 0, 53], [173, 17, 0, 53], [174, 17, 0, 53], [175, 17, 0, 53], [176, 17, 0, 53], [177, 17, 0, 53], [178, 17, 0, 53], [179, 17, 0, 53], [180, 18, 0, 53], [181, 18, 0, 53], [182, 18, 0, 53], [183, 18, 0, 53], [184, 18, 0, 53], [185, 18, 0, 53], [186, 18, 0, 53], [187, 18, 0, 53], [188, 18, 0, 53], [189, 18, 0, 53], [190, 19, 0, 53], [191, 19, 0, 53], [192, 19, 0, 53], [193, 19, 0, 53], [194, 19, 0, 53], [195, 19, 0, 53], [196, 19, 0, 53], [197, 19, 0, 53], [198, 19, 0, 53], [199, 19, 0, 53], [200, 20, 0, 53], [201, 20, 0, 53], [202, 20, 0, 53], [203, 20, 0, 53], [204, 20, 0, 53], [205, 20, 0, 53], [206, 20, 0, 53], [207, 20, 0, 53], [208, 20, 0, 53], [209, 20, 0, 53], [210, 21, 0, 53], [211, 21, 0, 53], [212, 21, 0, 53], [213, 21, 0, 53], [214, 21, 0, 53], [215, 21, 0, 53], [216, 21, 0, 53], [217, 21, 0, 53], [218, 21, 0, 53], [219, 21, 0, 53], [220, 22, 0, 53], [221, 22, 0, 53], [222, 22, 0, 53], [223, 22, 0, 53], [224, 22, 0, 53], [225, 22, 0, 53], [226, 22, 0, 53], [227, 22, 0, 53], [228, 22, 0, 53], [229, 22, 0, 53], [230, 23, 0, 53], [231, 23, 0, 53], [232, 23, 0, 53], [233, 23, 0, 53], [234, 23, 0, 53], [235, 23, 0, 53], [236, 23, 0, 53], [237, 23, 0, 53], [238, 23, 0, 53], [239, 23, 0, 53], [240, 24, 0, 53], [241, 24, 0, 53], [242, 24, 0, 53], [243, 24, 0, 53], [244, 24, 0, 53], [245, 24, 0, 53], [246, 24, 0, 53], [247, 24, 0, 53], [248, 24, 0, 53], [249, 24, 0, 53], [250, 25, 0, 53], [251, 25, 0, 53], [252, 25, 0, 53], [253, 25, 0, 53], [254, 25, 0, 53], [255, 25, 0, 53], [256, 25, 0, 53], [257, 25, 0, 53], [258, 25, 0, 53], [259, 25, 0, 53], [260, 26, 0, 53], [261, 26, 0, 53], [262, 26, 0, 53], [263, 26, 0, 53], [264, 26, 0, 53], [265, 26, 0, 53], [266, 26, 0, 53], [267, 26, 0, 53], [268, 26, 0, 53], [269, 26, 0, 53], [270, 27, 0, 53], [271, 27, 0, 53], [272, 27, 0, 53], [273, 27, 0, 53], [274, 27, 0, 53], [275, 27, 0, 53], [276, 27, 0, 53], [277, 27, 0, 53], [278, 27, 0, 53], [279, 27, 0, 53], [280, 28, 0, 53], [281, 28, 0, 53], [282, 28, 0, 53], [283, 28, 0, 53], [284, 28, 0, 53], [285, 28, 0, 53], [286, 28, 0, 53], [287, 28, 0, 53], [288, 28, 0, 53], [289, 28, 0, 53], [290, 29, 0, 53], [291, 29, 0, 53], [292, 29, 0, 53], [293, 29, 0, 53], [294, 29, 0, 53], [295, 29, 0, 53], [296, 29, 0, 53], [297, 29, 0, 53], [298, 29, 0, 53], [299, 29, 0, 53], [300, 30, 0, 53], [301, 30, 0, 53], [302, 30, 0, 53], [303, 30, 0, 53], [304, 30, 0, 53], [305, 30, 0, 53], [306, 30, 0, 53], [307, 30, 0, 53], [308, 30, 0, 53], [309, 30, 0, 53], [310, 31, 0, 53], [311, 31, 0, 53], [312, 31, 0, 53], [313, 31, 0, 53], [314, 31, 0, 53], [315, 31, 0, 53], [316, 31, 0, 53], [317, 31, 0, 53], [318, 31, 0, 53], [319, 31, 0, 53], [320, 32, 0, 53], [321, 32, 0, 53], [322, 32, 0, 53], [323, 32, 0, 53], [324, 32, 0, 53], [325, 32, 0, 53], [326, 32, 0, 53], [327, 32, 0, 53], [328, 32, 0, 53], [329, 32, 0, 53], [330, 33, 0, 53], [331, 33, 0, 53], [332, 33, 0, 53], [333, 33, 0, 53], [334, 33, 0, 53], [335, 33, 0, 53], [336, 33, 0, 53], [337, 33, 0, 53], [338, 33, 0, 53], [339, 33, 0, 53], [340, 34, 0, 53], [341, 34, 0, 53], [342, 34, 0, 53], [343, 34, 0, 53], [344, 34, 0, 53], [345, 34, 0, 53], [346, 34, 0, 53], [347, 34, 0, 53], [348, 34, 0, 53], [349, 34, 0, 53], [350, 35, 0, 53], [351, 35, 0, 53], [352, 35, 0, 53], [353, 35, 0, 53], [354, 35, 0, 53], [355, 35, 0, 53], [356, 35, 0, 53], [357, 35, 0, 53], [358, 35, 0, 53], [359, 35, 0, 53], [360, 36, 0, 53], [361, 36, 0, 53], [362, 36, 0, 53], [363, 36, 0, 53], [364, 36, 0, 53], [365, 36, 0, 53], [366, 36, 0, 53], [367, 36, 0, 53], [368, 36, 0, 53], [369, 36, 0, 53], [370, 37, 0, 53], [371, 37, 0, 53], [372, 37, 0, 53], [373, 37, 0, 53], [374, 37, 0, 53], [375, 37, 0, 53], [376, 37, 0, 53], [377, 37, 0, 53], [378, 37, 0, 53], [379, 37, 0, 53], [380, 38, 0, 53], [381, 38, 0, 53], [382, 38, 0, 53], [383, 38, 0, 53], [384, 38, 0, 53], [385, 38, 0, 53], [386, 38, 0, 53], [387, 38, 0, 53], [388, 38, 0, 53], [389, 38, 0, 53], [390, 39, 0, 53], [391, 39, 0, 53], [392, 39, 0, 53], [393, 39, 0, 53], [394, 39, 0, 53], [395, 39, 0, 53], [396, 39, 0, 53], [397, 39, 0, 53], [398, 39, 0, 53], [399, 39, 0, 53], [400, 40, 0, 53], [401, 40, 0, 53], [402, 40, 0, 53], [403, 40, 0, 53], [404, 40, 0, 53], [405, 40, 0, 53], [406, 40, 0, 53], [407, 40, 0, 53], [408, 40, 0, 53], [409, 40, 0, 53], [410, 41, 0, 53], [411, 41, 0, 53], [412, 41, 0, 53], [413, 41, 0, 53], [414, 41, 0, 53], [415, 41, 0, 53], [416, 41, 0, 53], [417, 41, 0, 53], [418, 41, 0, 53], [419, 41, 0, 53], [420, 42, 0, 53], [421, 42, 0, 53], [422, 42, 0, 53], [423, 42, 0, 53], [424, 42, 0, 53], [425, 42, 0, 53], [426, 42, 0, 53], [427, 42, 0, 53], [428, 42, 0, 53], [429, 42, 0, 53], [430, 43, 0, 53], [431, 43, 0, 53], [432, 43, 0, 53], [433, 43, 0, 53], [434, 43, 0, 53], [435, 43, 0, 53], [436, 43, 0, 53], [437, 43, 0, 53], [438, 43, 0, 53], [439, 43, 0, 53], [440, 44, 0, 53], [441, 44, 0, 53], [442, 44, 0, 53], [443, 44, 0, 53], [444, 44, 0, 53], [445, 44, 0, 53], [446, 44, 0, 53], [447, 44, 0, 53], [448, 44, 0, 53], [449, 44, 0, 53], [450, 45, 0, 53], [451, 45, 0, 53], [452, 45, 0, 53], [453, 45, 0, 53], [454, 45, 0, 53], [455, 45, 0, 53], [456, 45, 0, 53], [457, 45, 0, 53], [458, 45, 0, 53], [459, 45, 0, 53], [460, 46, 0, 53], [461, 46, 0, 53], [462, 46, 0, 53], [463, 46, 0, 53], [464, 46, 0, 53], [465, 46, 0, 53], [466, 46, 0, 53], [467, 46, 0, 53], [468, 46, 0, 53], [469, 46, 0, 53], [470, 47, 0, 53], [471, 47, 0, 53], [472, 47, 0, 53], [473, 47, 0, 53], [474, 47, 0, 53], [475, 47, 0, 53], [476, 47, 0, 53], [477, 47, 0, 53], [478, 47, 0, 53], [479, 47, 0, 53], [480, 48, 0, 53], [481, 48, 0, 53], [482, 48, 0, 53], [483, 48, 0, 53], [484, 48, 0, 53], [485, 48, 0, 53], [486, 48, 0, 53], [487, 48, 0, 53], [488, 48, 0, 53], [489, 48, 0, 53], [490, 49, 0, 53], [491, 49, 0, 53], [492, 49, 0, 53], [493, 49, 0, 53], [494, 49, 0, 53], [495, 49, 0, 53], [496, 49, 0, 53], [497, 49, 0, 53], [498, 49, 0, 53], [499, 49, 0, 53], [500, 50, 0, 53], [501, 50, 0, 53], [502, 50, 0, 53], [503, 50, 0, 53], [504, 50, 0, 53], [505, 50, 0, 53], [506, 50, 0, 53], [507, 50, 0, 53], [508, 50, 0, 53], [509, 50, 0, 53], [510, 51, 0, 53], [511, 51, 0, 53], [512, 51, 0, 53], [513, 51, 0, 53], [514, 51, 0, 53], [515, 51, 0, 53], [516, 51, 0, 53], [517, 51, 0, 53], [518, 51, 0, 53], [519, 51, 0, 53], [520, 52, 0, 53], [521, 52, 0, 53], [522, 52, 0, 53], [523, 52, 0, 53], [524, 52, 0, 53], [525, 52, 0, 53], [526, 52, 0, 53], [527, 52, 0, 53], [528, 52, 0, 53], [529, 52, 0, 53], [530, 53, 0, 53], [531, 53, 0, 53], [532, 53, 0, 53], [533, 53, 0, 53], [534, 53, 0, 53], [535, 53, 0, 53], [536, 53, 0, 53], [537, 53, 0, 53], [538, 53, 0, 53], [539, 53, 0, 53], [540, 54, 0, 53], [541, 54, 0, 53], [542, 54, 0, 53], [543, 54, 0, 53], [544, 54, 0, 53], [545, 54, 0, 53], [546, 54, 0, 53], [547, 54, 0, 53], [548, 54, 0, 53], [549, 54, 0, 53], [550, 55, 0, 53], [551, 55, 0, 53], [552, 55, 0, 53], [553, 55, 0, 53], [554, 55, 0, 53], [555, 55, 0, 53], [556, 55, 0, 53], [557, 55, 0, 53], [558, 55, 0, 53], [559, 55, 0, 53], [560, 56, 0, 53], [561, 56, 0, 53], [562, 56, 0, 53], [563, 56, 0, 53], [564, 56, 0, 53], [565, 56, 0, 53], [566, 56, 0, 53], [567, 56, 0, 53], [568, 56, 0, 53], [569, 56, 0, 53], [570, 57, 0, 53], [571, 57, 0, 53], [572, 57, 0, 53], [573, 57, 0, 53], [574, 57, 0, 53], [575, 57, 0, 53], [576, 57, 0, 53], [577, 57, 0, 53], [578, 57, 0, 53], [579, 57, 0, 53], [580, 58, 0, 53], [581, 58, 0, 53], [582, 58, 0, 53], [583, 58, 0, 53], [584, 58, 0, 53], [585, 58, 0, 53], [586, 58, 0, 53], [587, 58, 0, 53], [588, 58, 0, 53], [589, 58, 0, 53], [590, 59, 0, 53], [591, 59, 0, 53], [592, 59, 0, 53], [593, 59, 0, 53], [594, 59, 0, 53], [595, 59, 0, 53], [596, 59, 0, 53], [597, 59, 0, 53], [598, 59, 0, 53], [599, 59, 0, 53], [600, 60, 0, 53], [601, 60, 0, 53], [602, 60, 0, 53], [603, 60, 0, 53]], "bStatus": "BANNED", "pStatus": "ACTIVE", "bMaxSeen": 60, "pMaxSeen": 0};
 const svg = document.getElementById('chart');
 const NS = 'http://www.w3.org/2000/svg';
 const W = 720, H = 360, m = { t: 20, r: 54, b: 40, l: 44 };
@@ -135,36 +138,42 @@ const iw = W - m.l - m.r, ih = H - m.t - m.b;
 const xs = DATA.pts.map(p => p[0]);
 const xmax = Math.max(...xs);
 const X = t => m.l + (t / xmax) * iw;
-const Y = v => m.t + (1 - v) * ih;
+const yMax = Math.ceil(Math.max(...DATA.pts.map(p => Math.max(p[1], p[2], p[3]))) / 10) * 10 || 10;
+const Y = v => m.t + (1 - v / yMax) * ih;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function el(name, attrs) { const e = document.createElementNS(NS, name); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
 function draw() {
   svg.textContent = '';
   const grid = css('--grid'), faint = css('--ink-faint'), soft = css('--ink-soft');
-  [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+  [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+    const v = Math.round(f * yMax);
     svg.appendChild(el('line', { x1: m.l, y1: Y(v), x2: m.l + iw, y2: Y(v), stroke: grid, 'stroke-width': 1 }));
     const lbl = el('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: faint, 'font-family': 'var(--mono)' });
-    lbl.textContent = v.toFixed(2); svg.appendChild(lbl);
+    lbl.textContent = v; svg.appendChild(lbl);
   });
   [0, Math.round(xmax/2), xmax].forEach(t => {
     const lbl = el('text', { x: X(t), y: m.t + ih + 24, 'text-anchor': 'middle', 'font-size': 11, fill: faint, 'font-family': 'var(--mono)' });
     lbl.textContent = t; svg.appendChild(lbl);
   });
   const xaxt = el('text', { x: m.l + iw/2, y: H - 4, 'text-anchor': 'middle', 'font-size': 11, fill: soft }); xaxt.textContent = 'event index'; svg.appendChild(xaxt);
-  svg.appendChild(el('line', { x1: m.l, y1: Y(DATA.throttle), x2: m.l + iw, y2: Y(DATA.throttle), stroke: css('--throttle'), 'stroke-width': 2, 'stroke-dasharray': '4 3' }));
-  const path = (idx, color) => {
+  const yaxt = el('text', { x: m.l - 30, y: m.t - 6, 'font-size': 11, fill: soft }); yaxt.textContent = 'max_seen'; svg.appendChild(yaxt);
+  const path = (idx, color, dash) => {
     let d = '';
     DATA.pts.forEach((p, i) => { d += (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[idx]).toFixed(1) + ' '; });
-    svg.appendChild(el('path', { d, fill: 'none', stroke: color, 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    const a = { d, fill: 'none', stroke: color, 'stroke-width': dash ? 2 : 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+    if (dash) a['stroke-dasharray'] = '4 3';
+    svg.appendChild(el('path', a));
   };
+  path(3, css('--throttle'), true); // throttle line (included + 50)
   path(2, css('--proposed'));
   path(1, css('--baseline'));
   const last = DATA.pts[DATA.pts.length - 1];
   const endlab = (v, color, txt) => { const g = el('text', { x: m.l + iw + 6, y: Y(v) + 4, 'font-size': 12, fill: color, 'font-family': 'var(--sans)', 'font-weight': 600 }); g.textContent = txt; svg.appendChild(g); };
-  endlab(last[2], css('--proposed'), last[2].toFixed(2));
-  endlab(Math.max(last[1], 0.03), css('--baseline'), last[1].toFixed(2));
-  const cross = DATA.pts.find(p => p[1] < DATA.throttle);
-  if (cross) svg.appendChild(el('circle', { cx: X(cross[0]), cy: Y(DATA.throttle), r: 4, fill: css('--throttle') }));
+  endlab(last[1], css('--baseline'), String(last[1]));
+  endlab(Math.max(last[2], 2), css('--proposed'), String(last[2]));
+  // mark where the baseline first crosses the throttle line (BANNED).
+  const cross = DATA.pts.find(p => p[1] > p[3]);
+  if (cross) svg.appendChild(el('circle', { cx: X(cross[0]), cy: Y(cross[1]), r: 4, fill: css('--throttle') }));
 }
 const tip = document.getElementById('tip');
 svg.addEventListener('pointermove', e => {
@@ -173,20 +182,19 @@ svg.addEventListener('pointermove', e => {
   const t = Math.round(Math.max(0, Math.min(xmax, (px - m.l) / iw * xmax)));
   const p = DATA.pts[Math.min(t, DATA.pts.length - 1)];
   if (!p) return;
-  const cx = X(p[0]) / W * r.width, cy = Y(p[2]) / H * r.height;
+  const cx = X(p[0]) / W * r.width, cy = Y(p[1]) / H * r.height;
   tip.style.left = cx + 'px'; tip.style.top = cy + 'px'; tip.style.opacity = 1;
-  tip.innerHTML = 'event ' + p[0] + ' · <b style="color:var(--proposed)">' + p[2].toFixed(2) + '</b> / <b style="color:var(--baseline)">' + p[1].toFixed(2) + '</b>';
+  tip.innerHTML = 'event ' + p[0] + ' · base <b style="color:var(--baseline)">' + p[1] + '</b> / prop <b style="color:var(--proposed)">' + p[2] + '</b> · throttle ' + p[3];
 });
 svg.addEventListener('pointerleave', () => tip.style.opacity = 0);
 const tbody = document.getElementById('tbody');
-DATA.pts.forEach(p => { const tr = document.createElement('tr'); tr.innerHTML = '<td>' + p[0] + '</td><td>' + p[1].toFixed(2) + '</td><td>' + p[2].toFixed(2) + '</td>'; tbody.appendChild(tr); });
+DATA.pts.forEach(p => { const tr = document.createElement('tr'); tr.innerHTML = '<td>' + p[0] + '</td><td>' + p[1] + '</td><td>' + p[2] + '</td>'; tbody.appendChild(tr); });
 const toggle = document.getElementById('toggle'), box = document.getElementById('tablebox');
 toggle.addEventListener('click', () => { const on = box.hidden; box.hidden = !on; toggle.setAttribute('aria-pressed', String(on)); toggle.textContent = on ? 'Hide data table' : 'Show data table'; });
-document.getElementById('t-base').textContent = DATA.baselineFinal.toFixed(2);
-document.getElementById('t-prop').textContent = DATA.proposedFinal.toFixed(2);
-document.getElementById('t-thr').textContent = DATA.throttle.toFixed(2);
-const crossEvt = DATA.pts.find(p => p[1] < DATA.throttle);
-document.getElementById('t-cross').textContent = crossEvt ? crossEvt[0] : '—';
+document.getElementById('t-base').textContent = DATA.bStatus;
+document.getElementById('t-prop').textContent = DATA.pStatus;
+document.getElementById('t-bms').textContent = DATA.bMaxSeen;
+document.getElementById('t-pms').textContent = DATA.pMaxSeen;
 draw();
 let mq = window.matchMedia('(prefers-color-scheme: dark)');
 mq.addEventListener && mq.addEventListener('change', draw);
