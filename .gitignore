@@ -7,3 +7,4 @@ node_modules/
 kit/dist/
 app/dist/
 simulator/out/
+deployments/31337.json

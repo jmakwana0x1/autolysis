@@ -46,7 +46,7 @@ sim:
 
 # Redeploy and seed everything on the devnet (target: < 3 minutes)
 reset:
-    forge script script/Deploy.s.sol --rpc-url $RPC_URL --broadcast --slow
+    forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_URL --broadcast --slow --private-key $PRIVATE_KEY
     cd kit && npm run --silent seed
 
 # Build/test the isolated SwapVM/Aqua fork (solc 0.8.30, OZ 5.6.1) under the SwapVM-1.1 license
