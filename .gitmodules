@@ -19,3 +19,9 @@
 [submodule "lib/openzeppelin-5"]
 	path = lib/openzeppelin-5
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "lib/mempool-workshop"]
+	path = lib/mempool-workshop
+	url = https://github.com/forshtat/mempool-workshop
+[submodule "lib/mempool-workshop-sidecar"]
+	path = lib/mempool-workshop-sidecar
+	url = https://github.com/forshtat/mempool-workshop-sidecar

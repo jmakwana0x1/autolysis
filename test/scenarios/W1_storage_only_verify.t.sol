@@ -103,6 +103,34 @@ contract W1StorageOnlyVerifyTest is Test {
         assertTrue(env.isApproved(address(account)), "approved");
     }
 
+    // The sidecar admission bound (forshtat/mempool-workshop-sidecar, commit 2e22ff0,
+    // packages/executor/src/services/UserOpValidation/utils/validationPrefix.ts): the sum of the
+    // validation prefix's declared limits.execution PLUS the signature-verification cost must be
+    // <= MAX_VERIFY_GAS = 100,000 (enforced at validationPrefix.ts:288). The ERC-8421 1M staked
+    // allowance is NOT in this sidecar. One keyless ARBITRARY signature costs 100 gas (that file's
+    // SIGNATURE_VERIFICATION_GAS_COST), so the VERIFY frame's execution limit must be <= 99,900, and
+    // that limit must still cover the frame's actual gas. So an admissible limit exists only if actual
+    // VERIFY gas <= 99,900. The staked-read path measures ~131k (test/scenarios/R2_staking.t.sol),
+    // which no admissible limit can cover, so the storage-only path is the one that can ship here.
+    // NOTE: this is the local MockFrameEnv cost; the authoritative number comes from the devnet's
+    // ethrex_simulateFrameTransaction (frames[0].gasUsed), since real frame-opcode costs differ.
+    uint256 constant MAX_VERIFY_GAS = 100_000;
+    uint256 constant ARBITRARY_SIG_COST = 100;
+    uint256 constant VERIFY_EXEC_LIMIT_CAP = MAX_VERIFY_GAS - ARBITRARY_SIG_COST; // 99,900
+
+    function test_storageOnlyVerifyFitsMempoolCap() public {
+        uint256 roundId = _crash();
+        account.pushVerifySnapshot(posId, roundId);
+        env.resetApprovals(address(account));
+        env.set(_tx(roundId, env.sequenceOf(FirewallRules.nonceKey(address(market), posId))));
+        vm.prank(address(account));
+        uint256 g0 = gasleft();
+        account.verifyLiquidation();
+        uint256 used = g0 - gasleft();
+        emit log_named_uint("storage-only verifyLiquidation gas (MockFrameEnv)", used);
+        assertLe(used, VERIFY_EXEC_LIMIT_CAP, "storage-only VERIFY must admit a limit <= 99,900");
+    }
+
     /// The clincher: with the snapshot already stored, make every market read REVERT. Staked VERIFY
     /// would blow up calling the market; storage-only VERIFY never calls it, so it still approves.
     function test_verifyReadsNoOutsideContract() public {
