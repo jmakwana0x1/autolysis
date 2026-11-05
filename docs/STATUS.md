@@ -58,7 +58,23 @@ Labels: **on devnet** · **local test** (runs on anvil / Foundry here) · **mock
 | R2 staking | `IStakingRegistry` + `AutolysisAccount.stake`; VERIFY measured at ~129k gas (< 1M staked limit) via a mock registry; deploy stakes when `STAKING_REGISTRY` is set | **local test** (mock registry); registry address + MIN_STAKE_VALUE on 1337 **written, not run** |
 | R3 probes | `ProbeOpcodes.sol` (real `HegotaSupport`) deploys on anvil; probes 1–2 use real methods + per-frame status + receipt log, record the raw response, never pin unconfirmed | opcode deploy **local test**; probe execution **written, not run** (needs frame opcodes) |
 | R4 no-signature | liquidation tx built with `signatures: []`; ARBITRARY fallback; `signatureForm` probe + pin-required field | **local test** (build/encode); which form the mempool admits **written, not run** |
-| R5 Aqua fork | gated fork compiles vs upstream SwapVM/Aqua; LiquidationGate verified at `_dispatch`; `ISwapVMRouter` ABI seam | gate **local test**; full maker-ship swap through the hook **written, not run** (recipe in DESIGN.md) |
+| R5 Aqua fork | gated fork compiles vs upstream SwapVM/Aqua; LiquidationGate verified at `_dispatch`; full maker-ship swap through the real `Aqua.ship`/`swap` ABI | gate + **full fill** **local test** (see W2 below) |
 
 Nothing is **on devnet** yet (no RPC in this environment). Fresh clone: run `just setup` once (builds the
 vendored hegota-support package), then `just test` / `just aqua`.
+
+## PLAN-v4.3 pass (W1–W3): prove each sponsor track on a real chain environment
+
+Unichain mainnet/Sepolia RPC is unreachable from this container
+(`cast chain-id --rpc-url https://mainnet.unichain.org` fails), so W2.0's local-chain fallback applies to
+W2 and W3: the proofs run against a fresh local PoolManager / a fresh `new Aqua()` with the official
+contract code, and the user reruns the official-address fork variant on the laptop. No address was
+assumed — unknowns are `TODO(ask:)` in `docs/PLAN-v4.3.md`.
+
+| Item | What is proven | Where | Label |
+| --- | --- | --- | --- |
+| W2.1 gated router vs real Aqua | maker ships a gated program into `new Aqua()`; hook fills (tokens move); stranger + inactive venue revert `LiquidationGateClosed` | `aqua-fork/test/GatedAquaFill.t.sol` | **local test** |
+| W2.2–2.3 oracle pricer + maker program | `LiquidationPricer` (IExtruction/IStaticExtruction) prices off the feed; program `[gate][Extruction→pricer][Salt]`; fill == oracle rate (not reserves), quote == swap, fill tracks an oracle move | `aqua-fork/src/LiquidationPricer.sol`, `aqua-fork/test/OraclePricedFill.t.sol` | **local test** |
+| W2.4 hook → router ABI seam | `ISwapVMRouter` interface; `swap`/`quote` selectors verified equal to the compiled gated router (`0xa69f95bd` / `0xb7ebf0c5`) so the hook can call it cross-solc | `src/interfaces/ISwapVMRouter.sol` | seam **local test**; hook calling it end-to-end across the 0.8.26/0.8.30 boundary **written, not run** (laptop/devnet toolchain) |
+| W2.5 template allowlist | a non-allowlisted strategy template is rejected; canonical clone-codehash allowed | `test/aqua/AquaRouter.t.sol::test_nonAllowlistedTemplateRejected` | **local test** |
+| W3.1–3.2 v4 liquidation | BackstopHook mined to the flag bits, pool initialized + seeded, full liquidation: maker USDC drops, maker paid real collateral, hook left holding no claims | `test/integration/V4Liquidation.t.sol` | **local test** (fresh PoolManager); official PoolManager/PositionManager addresses **written, not run** (laptop fork) |
