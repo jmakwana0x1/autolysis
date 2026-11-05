@@ -87,11 +87,15 @@ contract MarketInvariantTest is Test {
         assertFalse(market.liquidationActive(), "active flag stuck");
     }
 
-    /// A stranger can never liquidate directly: every such attempt reverted.
-    function invariant_onlyAccountLiquidates() public view {
-        // handler counts reverts; there is no counter of successes because a success is impossible,
-        // but we assert the flag and that totalSoldOut only grew via account-driven steps implicitly.
-        assertTrue(true);
+    uint256 internal lastSoldOut;
+
+    /// Collateral only ever leaves a position through an accounted liquidation sale, so the market's
+    /// sold-out total is monotonic non-decreasing. A stranger-driven sale would be unaccounted; the
+    /// stranger path is also asserted to always revert in afterInvariant.
+    function invariant_soldOutMonotonic() public {
+        uint256 cur = market.totalSoldOut();
+        assertGe(cur, lastSoldOut, "totalSoldOut decreased");
+        lastSoldOut = cur;
     }
 
     /// Tank conservation: for every position, deposited == balance + billed (drift zero).

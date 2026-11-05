@@ -52,13 +52,13 @@ contract HegotaFrameEnv is IFrameEnv {
 
     address private immutable SELF;
 
-    constructor(Cells memory cells, Params memory params) {
+    constructor(Cells memory cells, Params memory params_) {
         TX_PARAM = cells.txParam;
         FRAME_PARAM = cells.frameParam;
         FRAME_DATA_LOAD = cells.frameDataLoad;
         APPROVE_CELL = cells.approveCell;
-        p = params;
-        PARAMS_HASH = keccak256(abi.encode(params));
+        p = params_;
+        PARAMS_HASH = keccak256(abi.encode(params_));
         SELF = address(this);
     }
 
