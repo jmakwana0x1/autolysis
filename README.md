@@ -283,16 +283,16 @@ forge 1.8.1, no keys and no devnet. What each job proves:
 | `kit` | `tsc --noEmit` + `vitest` | the frame-tx builder round-trips through the real hegota-support encoder; simulate is sent the raw 0x06 bytes; `just gate-a` and the Phase B scenes behave as specified against a mocked RPC (stop on first error, idempotent rerun, replacement, attack rejection); the EXO-010 simulator |
 | `fork-unichain` | `scripts/fork-test.sh` ×2 (`just fork-uniswap`, `just fork-c2`) | on a Unichain mainnet fork pinned to block 63,190,327: a full self-liquidation through the **official** v4 PoolManager `0x1F98…0004` (tiers 2 + 3), and tier 1 through the gated router into the **official** Aqua `0x1111…a90a` on that same PoolManager. Balance tables in the job summary, traces in artifact `fork-traces`. A public-RPC rate limit is retried once and, if it persists, reported in the summary |
 
-**Latest CI run, exact counts** ([run 42264432663](https://github.com/jmakwana0x1/autolysis/actions/runs/42264432663),
+**Latest CI run, exact counts** ([run 42265499974](https://github.com/jmakwana0x1/autolysis/actions/runs/42265499974),
 all four jobs green):
 
 | Job | Tests |
 | --- | --- |
 | contracts | **104** unit / fuzz / differential / integration / scenario tests passed. The 2 skipped are the fork suites, which run in `fork-unichain`. Plus **12** stateful invariants in 2 suites (128 runs × depth 128) |
 | aqua | **9** passed |
-| kit | **46** passed |
+| kit | **47** passed |
 | fork-unichain | **5** passed: Uniswap 2, 1inch C2 3 |
-| **Total** | **164 tests + 12 invariants**, all passing |
+| **Total** | **165 tests + 12 invariants**, all passing |
 
 Not in CI, by design: anything that needs devnet ETH or a private key (`just gate-a`, `just e2e`).
 
