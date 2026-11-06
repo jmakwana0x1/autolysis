@@ -77,10 +77,10 @@ Measured here — **mock only** (`test/scenarios/A1_verify_gas.t.sol`, after A1 
 
 | VERIFY path | pre-A1 mock | A1 mock (cold) | admissible limit ≤ 99,900? (mock) |
 | --- | --- | --- | --- |
-| outside reads (3 market/feed CALLs) | 131,589 | **70,728** | yes (~29k margin) |
-| storage-only snapshot (W1.5) | 98,581 | **49,321** | yes (~50k margin) |
+| outside reads (3 market/feed CALLs) | 131,589 | **71,822** | yes (~28k margin) |
+| storage-only snapshot (W1.5) | 98,581 | **50,414** | yes (~49k margin) |
 
-What changed in A1: `IFrameEnv.loadCanonical()` returns a fixed-size `CanonicalView` (14 opcode reads, no
+What changed in A1: `IFrameEnv.loadCanonical()` returns a fixed-size `CanonicalView` (15 opcode reads, no
 dynamic ABI decoding) instead of the whole `TxView`; the `Approved` event is gone; `MockFrameEnv` answers
 each read with one STATICCALL to a per-opcode helper whose answers are constants in its code (the pre-A1
 mock paid one SLOAD per field plus ~45k of mock-only SSTORE bookkeeping inside APPROVE). The A1 method

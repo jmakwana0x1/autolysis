@@ -8,7 +8,7 @@ build), so the honest split is **proven by local suite** vs **needs a devnet**.
 > `forshtat/mempool-workshop` (`bcfe02a`) and `-sidecar` (`2e22ff0`). Those facts override assumptions in
 > `PLAN-v4.3.md` / `REVIEW-3`. The load-bearing one: **`MAX_VERIFY_GAS = 100,000`, no 1M staked allowance
 > in this sidecar.** After A1 (slim VERIFY, `loadCanonical()`), the **mock only** VERIFY gas is
-> **70,728** (outside reads) and **49,321** (storage-only), both under 99,900 on the mock. Which path ships
+> **71,822** (outside reads) and **50,414** (storage-only), both under 99,900 on the mock. Which path ships
 > is decided in A5 from the devnet's `ethrex_simulateFrameTransaction` `frames[0].gasUsed` (**written, not run**).
 
 ## Proven by local suite (Foundry + v4-core/SwapVM + kit vitest)
@@ -63,7 +63,7 @@ Labels: **on devnet** · **local test** (runs on anvil / Foundry here) · **mock
 | Item | State | Label |
 | --- | --- | --- |
 | R1 deploy + seed | `script/Deploy.s.sol` + `kit/src/seed.ts` run end to end on anvil: all addresses have code, 3 borrowers at HF 1.03/1.06/1.10, liquidity, house, makers | **local test** |
-| R2 staking | `NaiveStakingRegistry` at `0xD51c…D2F`, minStake 0.01 ETH, keyed on msg.sender; deploy calls `account.stake{0.012 ETH}(86400)` and defaults the registry to the devnet address. **MAX_VERIFY_GAS = 100k, NOT 1M.** A1 mock gas: outside reads 70,728, storage-only 49,321 (`A1_verify_gas.t.sol`, **mock only**); path chosen in A5 from devnet simulate. | staking build **local test**; the 100k cap vs real `frames[0].gasUsed` **written, not run** (devnet simulate) |
+| R2 staking | `NaiveStakingRegistry` at `0xD51c…D2F`, minStake 0.01 ETH, keyed on msg.sender; deploy calls `account.stake{0.012 ETH}(86400)` and defaults the registry to the devnet address. **MAX_VERIFY_GAS = 100k, NOT 1M.** A1 mock gas: outside reads 71,822, storage-only 50,414 (`A1_verify_gas.t.sol`, **mock only**); path chosen in A5 from devnet simulate. | staking build **local test**; the 100k cap vs real `frames[0].gasUsed` **written, not run** (devnet simulate) |
 | R3 probes | `ProbeOpcodes.sol` (real `HegotaSupport`) deploys on anvil; probes rewritten on `ethrex_simulateFrameTransaction([tx,"latest",{trace:true}])` reading `{succeeded,gasUsed,violation}`; added a VERIFY-gas probe (`frames[0].gasUsed` ≤ 99,900) | opcode deploy **local test**; probe execution **written, not run** (needs the devnet) |
 | R4 signature | keyless liquidation = one ARBITRARY entry `{scheme:0,…}` by **default** (per devnet facts), empty-list is the probed stretch form; ARBITRARY costs 100 gas toward MAX_VERIFY_GAS | **local test** (build/encode); whether empty-list is admitted **written, not run** |
 | R5 Aqua fork | gated fork compiles vs upstream SwapVM/Aqua; LiquidationGate verified at `_dispatch`; full maker-ship swap through the real `Aqua.ship`/`swap` ABI | gate + **full fill** **local test** (see W2 below) |
@@ -92,7 +92,7 @@ assumed — unknowns are `TODO(ask:)` in `docs/PLAN-v4.3.md`.
 
 | Item | What is proven | Where | Label |
 | --- | --- | --- | --- |
-| A1 slim VERIFY | `IFrameEnv.loadCanonical()` → fixed-size `CanonicalView` (14 opcode reads, no dynamic ABI), one shared `CanonicalReader` for devnet + mock; `FirewallRules` on the view (+ `EXEC_VALUE`); `Approved` event dropped; mutation fuzz green, plus mock/reference agreement. Gas: outside reads **70,728**, storage-only **49,321** (cold start) | `src/frame/CanonicalReader.sol`, `test/scenarios/A1_verify_gas.t.sol` | **mock only** (gas); rules **local test** |
-| A1 open question | the rules no longer read sender / frame-0 mode, target, selector / gas limits. Sender + frame-0 target are implied by APPROVE (`resolved_target == tx.sender`); **that APPROVE is VERIFY-mode-only is not confirmed in vendored source** — probe it in B3 | `src/frame/FrameTypes.sol` (`CanonicalView` doc) | **written, not run** |
+| A1 slim VERIFY | `IFrameEnv.loadCanonical()` → fixed-size `CanonicalView` (15 opcode reads, no dynamic ABI), one shared `CanonicalReader` for devnet + mock; `FirewallRules` on the view (+ `EXEC_VALUE`); `Approved` event dropped; mutation fuzz green, plus mock/reference agreement. Gas: outside reads **71,822**, storage-only **50,414** (cold start) | `src/frame/CanonicalReader.sol`, `test/scenarios/A1_verify_gas.t.sol` | **mock only** (gas); rules **local test** |
+| A1 follow-up: frame 0 MODE | frame 0 MODE == VERIFY is read again (one extra FRAMEPARAM) and checked (`Reject.VERIFY_FRAME`), so the rules no longer rely on APPROVE being VERIFY-only. Sender / frame-0 target stay implied by APPROVE (`resolved_target == tx.sender`) | `test/fuzz/FirewallRules.t.sol::test_mut_verifyMode` | **local test** |
 | C1 hook tier 1 → gated SwapVM router | full liquidation market → V4Venue → v4 pool → `BackstopHook` tier 1 → `AutolysisAquaRouterGated` + `Aqua` (0.8.30, from `out-aqua` artifacts via `vm.deployCode`); maker ships `[gate][Extruction→LiquidationPricer(venue.price())][Salt]`. Maker wallet USDC −116.49, collateral +71.91 at the cited 1.62; tiers 2/3 untouched; hook keeps 0 tokens / 0 claims / 0 allowance; stranger and hook-outside-liquidation fills revert `LiquidationGateClosed` | `src/backstop/BackstopHook.sol` (`_tier1SwapVM`), `test/integration/C1_SwapVMTier1.t.sol` | **local test** |
 | C2 same against official Aqua `0x1111…a90a` on Unichain | not started | — | **written, not run** |

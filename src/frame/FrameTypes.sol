@@ -35,21 +35,22 @@ struct FrameView {
 }
 
 /// @notice The FIXED-size slice of a frame transaction that VERIFY actually checks (A1, PLAN-v4.4).
-/// @dev Read by `IFrameEnv.loadCanonical()` with ~14 frame-opcode reads and no dynamic ABI encoding.
+/// @dev Read by `IFrameEnv.loadCanonical()` with 15 frame-opcode reads and no dynamic ABI encoding.
 ///      Fields that the firewall no longer reads, and why that is safe:
 ///      - sender, frame 0 target: APPROVE(EXECUTION[_AND_PAYMENT]) requires the executing address to be
 ///        the frame's resolved target and that target to be tx.sender (EIP-8141 §APPROVE, as cited in
 ///        lib/mempool-workshop-sidecar/docs/plans/2026-09-02-erc7562-native-aa-mempool-spec.md:66), so a
 ///        successful APPROVE from this account already implies both equal the account.
 ///      - frame 0 selector: the account has no other entry that reaches APPROVE.
-///      - frame 0 mode, current frame index: with exactly 2 frames and frame 1 in SENDER mode, the
-///        approving frame is frame 0. That APPROVE is VERIFY-only is NOT confirmed in vendored source;
-///        probe it on the devnet (B3) before relying on it.
+///      - current frame index: with exactly 2 frames, frame 0 in VERIFY mode and frame 1 in SENDER
+///        mode, the approving frame is frame 0. (Frame 0 MODE itself IS read: that APPROVE is
+///        VERIFY-only is not confirmed in vendored source, so the rules check it explicitly.)
 ///      - frame gas limits: the fee cap uses MAX_COST in the total-cost format (probe #2, FEE_FORMAT=0).
 ///      When frameCount != 2 the frame fields are left zero (the rules reject on FRAME_COUNT first);
 ///      when exec data length != 68 the words are left zero (rejected on EXEC_CALLDATA_LEN).
 struct CanonicalView {
     uint256 frameCount; // TXPARAM FRAME_COUNT
+    uint256 verifyMode; // FRAMEPARAM(0, MODE)
     uint256 verifyAllowedScope; // FRAMEPARAM(0, ALLOWED_SCOPE)
     uint256 verifyStateLimit; // FRAMEPARAM(0, STATE_GAS_LIMIT)
     uint256 execMode; // FRAMEPARAM(1, MODE)

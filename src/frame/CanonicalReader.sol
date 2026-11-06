@@ -23,6 +23,7 @@ abstract contract CanonicalReader {
         c.maxCost = _txparam(ProbeConstants.TX_MAX_COST);
         if (c.frameCount != 2) return c; // rejected on FRAME_COUNT; frame 1 may not exist
 
+        c.verifyMode = _frameparam(0, ProbeConstants.FR_MODE);
         c.verifyAllowedScope = _frameparam(0, ProbeConstants.FR_ALLOWED_SCOPE);
         c.verifyStateLimit = _frameparam(0, ProbeConstants.FR_STATE_GAS_LIMIT);
         c.execMode = _frameparam(1, ProbeConstants.FR_MODE);

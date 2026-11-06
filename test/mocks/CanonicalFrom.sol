@@ -16,6 +16,7 @@ library CanonicalFrom {
         c.sequence = v.sequence;
         c.maxCost = v.feeParam;
         if (c.frameCount != 2) return c;
+        c.verifyMode = v.frames[0].mode;
         c.verifyAllowedScope = v.frames[0].allowedScope;
         c.verifyStateLimit = v.frames[0].stateLimit;
         c.execMode = v.frames[1].mode;

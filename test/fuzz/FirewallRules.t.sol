@@ -102,6 +102,13 @@ contract FirewallRulesTest is Test {
         _rejects(v);
     }
 
+    function test_mut_verifyMode(uint8 m) public pure {
+        vm.assume(m != FrameTypes.MODE_VERIFY);
+        TxView memory v = _canonical();
+        v.frames[0].mode = m;
+        assertEq(uint256(_check(v, _expect())), uint256(FirewallRules.Reject.VERIFY_FRAME));
+    }
+
     function test_mut_verifyAllowedScope(uint256 scope) public pure {
         vm.assume(scope != FrameTypes.SCOPE_EXECUTION_AND_PAYMENT);
         TxView memory v = _canonical();
@@ -224,15 +231,14 @@ contract FirewallRulesTest is Test {
         _rejects(v);
     }
 
-    // Out of scope for the rules since A1, by design: sender, frame 0 mode/target/selector and the frame
-    // gas limits are not in CanonicalView. Sender and frame 0 target are enforced by APPROVE itself
-    // (resolved_target == tx.sender == ADDRESS); frame 0 mode is a devnet probe (B3). Pin that the rules
-    // do not look at them, so a future change that starts depending on them is a visible decision.
-    function test_rulesIgnoreApproveEnforcedFields(address x, uint8 m, uint256 gl) public pure {
+    // Out of scope for the rules since A1, by design: sender, frame 0 target/selector and the frame gas
+    // limits are not in CanonicalView. Sender and frame 0 target are enforced by APPROVE itself
+    // (resolved_target == tx.sender == ADDRESS). Pin that the rules do not look at them, so a future
+    // change that starts depending on them is a visible decision.
+    function test_rulesIgnoreApproveEnforcedFields(address x, uint256 gl) public pure {
         TxView memory v = _canonical();
         v.sender = x;
         v.frames[0].target = x;
-        v.frames[0].mode = m;
         v.frames[0].gasLimit = gl;
         v.frames[1].gasLimit = gl;
         v.frames[0].data = hex"deadbeef";
@@ -243,7 +249,8 @@ contract FirewallRulesTest is Test {
     // CanonicalReader code the devnet env runs.
     function test_mockAgreesWithReference(uint8 kind, uint256 x) public {
         TxView memory v = _canonical();
-        kind = uint8(bound(kind, 0, 5));
+        kind = uint8(bound(kind, 0, 6));
+        if (kind == 6) v.frames[0].mode = uint8(x);
         if (kind == 1) v.frames[1].data = abi.encodeWithSelector(FirewallRules.EXECUTE_SEL, x, x >> 7);
         if (kind == 2) v.frames[1].value = x;
         if (kind == 3) v.nonceKeys[0] = x;

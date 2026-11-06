@@ -20,7 +20,7 @@ library FirewallRules {
     enum Reject {
         OK,
         FRAME_COUNT,
-        VERIFY_FRAME, // unused since A1: frame 0 target/selector are implied by APPROVE (see CanonicalView)
+        VERIFY_FRAME, // frame 0 not in VERIFY mode (its target/selector are implied by APPROVE)
         EXEC_FRAME_MODE,
         EXEC_TARGET,
         EXEC_SELECTOR,
@@ -66,7 +66,8 @@ library FirewallRules {
         // Exactly two frames: VERIFY then SENDER-execute.
         if (c.frameCount != 2) return Reject.FRAME_COUNT;
 
-        // Frame 0 may approve both execution and payment (the account self-pays).
+        // Frame 0 is the VERIFY frame and may approve both execution and payment (the account self-pays).
+        if (c.verifyMode != FrameTypes.MODE_VERIFY) return Reject.VERIFY_FRAME;
         if (c.verifyAllowedScope != FrameTypes.SCOPE_EXECUTION_AND_PAYMENT) return Reject.ALLOWED_SCOPE;
 
         // Frame 1: SENDER mode, targets the account, moves no value, calls selfLiquidate(pos, round).
