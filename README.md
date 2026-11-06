@@ -155,7 +155,8 @@ included, while the canonical mempool rejected the same transaction.
   sent through the gateway sidecar (manual bundling), then re-sent to the miner and dropped after 4
   relays. The successful run used fresh entities, sent through the miner sidecar, and cited a fresh round.
 
-**Phase B crash on the devnet: 11 of 12 liquidations included, canonical 0 of 12.** Twelve positions
+**Phase B crash on the devnet: 12 of 12 liquidations included via the alt mempool, 0 of 12 via the
+canonical mempool.** Twelve positions
 (0.25 ETH collateral each) became liquidatable in one in-band −10% round. Each liquidation went to the
 canonical mempool and to the alt mempool:
 
@@ -163,8 +164,8 @@ canonical mempool and to the alt mempool:
   within the frame's 99,900 limit). The account held 0.0647 ETH against 0.0543 ETH needed for 12 × the
   max cost.
 - **Canonical mempool:** rejected all 12, with the same `StorageReadNonSender` text as above.
-- **Alt mempool (miner sidecar):** 11 of 12 were included, all `LiquidationOk`, 4 / 4 / 3 per block. That
-  is one account on 11 separate nonce keys. Each was verified on ethrex (type `0x6` from the account, both
+- **Alt mempool (miner sidecar):** 11 of 12 were included on the first send, all `LiquidationOk`,
+  4 / 4 / 3 per block. That is one account on 11 separate nonce keys. The 12th is covered below. Each was verified on ethrex (type `0x6` from the account, both
   frames `0x1`) and in the market (`liquidationCount 1`, HF 0.960 → 1.055).
 
 | Position | Block | Liquidation |
@@ -180,12 +181,26 @@ canonical mempool and to the alt mempool:
 | 12 | 3581 | [`0x9e7a6ec7…6dc5`](https://explorer.altmempool.wtf/tx/0x9e7a6ec74dc8e082c4057867c80e784f50737b2612f4bc57eb971897c78b6dc5?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
 | 13 | 3581 | [`0x96a9f498…c83d`](https://explorer.altmempool.wtf/tx/0x96a9f4982f8b9e3b409010b7bcba46051737cfbac74283a8b4e1f83c1b69c83d?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
 | 14 | 3581 | [`0x9d2f1fc7…4306`](https://explorer.altmempool.wtf/tx/0x9d2f1fc7ca561246fafc85186861bc5ada9c4ccc534f88f1806d9a19013a4306?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 3 (resent) | 6776 | [`0xdf40beb3…b1d0`](https://explorer.altmempool.wtf/tx/0xdf40beb38571731a96de0aa328f6669ac9b9590c6079f95934afb4a2478bb1d0?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
 
-- **Position 3 is the miss.** Its `eth_sendFrameTransaction` request got no response (`fetch failed`),
-  while the devnet RPC was also timing out on plain reads. Its transaction
-  `0x9498bf10a71f40270e7804f475b3123452c5853ae85e8486278f51e024522fa3` is not known to the miner or the
-  gateway, and the position is untouched on chain (nonce 0, no attempt, HF 0.96). It was never received.
-  Nothing was half-sent.
+- **Position 3, resent.** Its first `eth_sendFrameTransaction` request got no response
+  (`fetch failed`), while the devnet RPC was also timing out on plain reads. That transaction
+  (`0x9498bf10…2fa3`) was never received by either sidecar, and the position was untouched on chain. It
+  was resent with `just scene crash-resend 3`: a fresh round 5, the canonical attempt rejected again, and
+  the alt send included in block 6776, `LiquidationOk`. Sends now retry once on a transport error, after
+  first checking the sidecar for the hash, so a retry can't double-liquidate.
+- **Attacks: 5 of 5 rejected at admission.**
+  - Our VERIFY rejected three: wrong selector → `Rejected(EXEC_SELECTOR)`; fee over cap →
+    `Rejected(FEE_CAP)`; stale round → `StaleRound()`.
+  - The sidecar's structural checks rejected two before VERIFY: the appended key (`nonceKeys must be
+    strictly increasing`) and frame 0 in DEFAULT mode (`validation prefix not recognized`).
+- **Replacement: not demonstrated.** The lower-fee tx was rejected at admission (`validation frame 0:
+  reverted … "approve failed"`). Only the +10% tx on the same key and sequence was admitted and included
+  ([`0xf793ccd2…4880`](https://explorer.altmempool.wtf/tx/0xf793ccd21e141aa3aa3129f512590997fb7679a3506598c99d575c46c48f4880?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc)).
+  The cause could not be reproduced afterwards. The scene's check has been fixed: it no longer counts this
+  as a replacement.
+- **Reputation:** the account stayed `ok` and staked throughout: `opsSeen/opsIncluded` 0/0 before the
+  crash, 11/11 after, 10/10 later (hourly decay).
 - **What we learned on the devnet:**
   1. Send frame transactions to the **miner** sidecar (auto-bundling). The gateway (manual bundling)
      admitted our first liquidation and never relayed it.
@@ -268,13 +283,24 @@ forge 1.8.1, no keys and no devnet. What each job proves:
 | `kit` | `tsc --noEmit` + `vitest` | the frame-tx builder round-trips through the real hegota-support encoder; simulate is sent the raw 0x06 bytes; `just gate-a` and the Phase B scenes behave as specified against a mocked RPC (stop on first error, idempotent rerun, replacement, attack rejection); the EXO-010 simulator |
 | `fork-unichain` | `scripts/fork-test.sh` ×2 (`just fork-uniswap`, `just fork-c2`) | on a Unichain mainnet fork pinned to block 63,190,327: a full self-liquidation through the **official** v4 PoolManager `0x1F98…0004` (tiers 2 + 3), and tier 1 through the gated router into the **official** Aqua `0x1111…a90a` on that same PoolManager. Balance tables in the job summary, traces in artifact `fork-traces`. A public-RPC rate limit is retried once and, if it persists, reported in the summary |
 
+**Latest CI run, exact counts** ([run 42264432663](https://github.com/jmakwana0x1/autolysis/actions/runs/42264432663),
+all four jobs green):
+
+| Job | Tests |
+| --- | --- |
+| contracts | **104** unit / fuzz / differential / integration / scenario tests passed. The 2 skipped are the fork suites, which run in `fork-unichain`. Plus **12** stateful invariants in 2 suites (128 runs × depth 128) |
+| aqua | **9** passed |
+| kit | **46** passed |
+| fork-unichain | **5** passed: Uniswap 2, 1inch C2 3 |
+| **Total** | **164 tests + 12 invariants**, all passing |
+
 Not in CI, by design: anything that needs devnet ETH or a private key (`just gate-a`, `just e2e`).
 
 ## Limitations (honest list)
 
-- **On the devnet, Gate A and the crash scene have run** (11 of 12 included; the 12th send was lost in
-  transport). Replacement, attacks and the reputation/Uniswap-balance scenes are written and unit-tested
-  but not yet run on chain.
+- **Devnet coverage:** Gate A, crash (12/12), attacks (5/5 rejected), uniswap-balances and reputation
+  have all run on chain. **Keyed fee-bump replacement has not been demonstrated on chain:** the lower-fee
+  tx was rejected at admission, so nothing was there to replace.
 - **VERIFY gas is mock-measured.** 71,822 (outside reads) / 50,414 (storage-only) on a cost-realistic mock.
   `just gate-a` measures both with `ethrex_simulateFrameTransaction` and picks the path by the rule.
 - **The storage-only snapshot is a separate transaction** (`pushVerifySnapshot`), not yet written by the
