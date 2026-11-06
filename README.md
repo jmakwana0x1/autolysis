@@ -71,6 +71,8 @@ devnet's `NaiveStakingRegistry`). The exact texts from each are recorded per run
 
 ### Uniswap v4 and 1inch Aqua: proven on a Unichain mainnet fork against official contracts
 
+Building on v4: what worked and the friction we hit is in [`FEEDBACK.md`](FEEDBACK.md).
+
 Both run against the **official** contracts at Unichain mainnet (chain 130) block **63,190,327**. Our
 contracts (hook, venue, market, account, gated router, pricer, test tokens) are deployed onto that fork.
 
@@ -322,5 +324,5 @@ Not in CI, by design: anything that needs devnet ETH or a private key (`just gat
 
 [`docs/DESIGN.md`](docs/DESIGN.md) design and threat model · [`docs/DEVNET.md`](docs/DEVNET.md) devnet
 facts (from vendored sources) · [`docs/PLAN-v4.4.md`](docs/PLAN-v4.4.md) plan ·
-[`docs/FEEDBACK.md`](docs/FEEDBACK.md) Uniswap feedback · [`docs/EF_WRITEUP.md`](docs/EF_WRITEUP.md)
+[`FEEDBACK.md`](FEEDBACK.md) Uniswap v4 feedback (also at `docs/FEEDBACK.md`) · [`docs/EF_WRITEUP.md`](docs/EF_WRITEUP.md)
 EF write-up · [`docs/AI_USAGE.md`](docs/AI_USAGE.md) AI usage

@@ -43,6 +43,8 @@ jobs:
         with:
           just-version: ${{ env.JUST_VERSION }}
       - run: forge --version
+      - name: FEEDBACK.md and docs/FEEDBACK.md are identical
+        run: cmp FEEDBACK.md docs/FEEDBACK.md
       - name: Unit + fuzz + differential (just test, builds out-aqua first)
         run: just test
       - name: Stateful invariants (CI profile, 128 runs x depth 128)
