@@ -6181,5 +6181,431 @@
       "isStaked": true
     },
     "result": "passed"
+  },
+  "scenes": {
+    "crash": {
+      "startedAt": "2026-11-06T12:19:52.724Z",
+      "path": "outside-reads",
+      "reputationBefore": {
+        "label": "crash-before",
+        "at": "2026-11-06T12:19:52.725Z",
+        "listed": true,
+        "opsSeen": 0,
+        "opsIncluded": 0,
+        "status": "ok",
+        "isStaked": true,
+        "raw": {
+          "address": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "opsSeen": 0,
+          "opsIncluded": 0,
+          "status": "ok",
+          "isWhitelisted": false,
+          "isBlacklisted": false,
+          "stake": "0x2aa1efb94e0000",
+          "unstakeDelaySec": 86400,
+          "withdrawTime": "0x0",
+          "isStaked": true
+        }
+      },
+      "collateralPerPositionWei": "250000000000000000",
+      "positions": [
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14"
+      ],
+      "round": "4",
+      "roundTx": "0x9d56a633a61225d01404d6f75b2c5937b356753ce152e4f109681413cdf3096b",
+      "snapshots": {},
+      "topUpTx": "0xe514f510bf75068531ed58ed745d077e8f7fc2102d458289a0be2d75487b12d4",
+      "precheck": {
+        "items": [
+          {
+            "positionId": "3",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "4",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "5",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "6",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "7",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "8",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "9",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "10",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "11",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "12",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "13",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          },
+          {
+            "positionId": "14",
+            "verifyGasUsed": 94168,
+            "verifyLimit": 99900,
+            "executeGasUsed": 363877,
+            "maxCost": "4523644000000000",
+            "ok": true,
+            "failure": null
+          }
+        ],
+        "accountBalanceWei": "64737216000000000",
+        "neededWei": "54283728000000000",
+        "balanceCovers": true
+      },
+      "items": [
+        {
+          "positionId": "3",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": false,
+            "error": "fetch failed"
+          }
+        },
+        {
+          "positionId": "4",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0xf502d8c4a655e1b9538505a666f87c583ebfa11e4a7eda310d66db667c08f94d"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdf8"
+        },
+        {
+          "positionId": "5",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0xda00b653700572f26c52cc6ebfa95f5fbf32d4f71596cdf4ffdfc000a66aabf5"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdf8"
+        },
+        {
+          "positionId": "6",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x07dac60e5491cb717d7a1b8ab3c24d799fc39fa4e4479d52a6fe117725070ea4"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdf8"
+        },
+        {
+          "positionId": "7",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x4c1d4bf0bbd28034b80af25c94fa1ed87b7a3458ba448f22dab45cfa53745efb"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdf8"
+        },
+        {
+          "positionId": "8",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x712c65e368b77c475a70dd123a8c17ae6094df912db171d4ce1806135409d86b"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdfb"
+        },
+        {
+          "positionId": "9",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0xe2afdcd14192fb109f2d34f2c4dc4be8f3a87eb5aa538e7b4120de66e626a69d"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdfb"
+        },
+        {
+          "positionId": "10",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x660f55382737687890c9313da685e746fab176487d8421e3b629f80aed8b1621"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdfb"
+        },
+        {
+          "positionId": "11",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x96cc847ee78114944597c3625db9099914304c1c1a84dd1c5c25ae05dfac062a"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdfb"
+        },
+        {
+          "positionId": "12",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x9e7a6ec74dc8e082c4057867c80e784f50737b2612f4bc57eb971897c78b6dc5"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdfd"
+        },
+        {
+          "positionId": "13",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x96a9f4982f8b9e3b409010b7bcba46051737cfbac74283a8b4e1f83c1b69c83d"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdfd"
+        },
+        {
+          "positionId": "14",
+          "canonical": {
+            "accepted": false,
+            "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+          },
+          "alt": {
+            "admitted": true,
+            "hash": "0x9d2f1fc7ca561246fafc85186861bc5ada9c4ccc534f88f1806d9a19013a4306"
+          },
+          "included": true,
+          "outcome": "LiquidationOk",
+          "block": "0xdfd"
+        }
+      ],
+      "reputationAfter": {
+        "label": "crash-after",
+        "at": "2026-11-06T12:27:20.840Z",
+        "listed": true,
+        "opsSeen": 11,
+        "opsIncluded": 11,
+        "status": "ok",
+        "isStaked": true,
+        "raw": {
+          "address": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "opsSeen": 11,
+          "opsIncluded": 11,
+          "status": "ok",
+          "isWhitelisted": false,
+          "isBlacklisted": false,
+          "stake": "0x2aa1efb94e0000",
+          "unstakeDelaySec": 86400,
+          "withdrawTime": "0x0",
+          "isStaked": true
+        }
+      },
+      "summary": {
+        "positions": 12,
+        "canonicalAccepted": 0,
+        "altAdmitted": 11,
+        "included": 11,
+        "liquidationOk": 11
+      },
+      "ok": false,
+      "finishedAt": "2026-11-06T12:27:25.615Z"
+    }
+  },
+  "reputation": {
+    "account": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+    "snapshots": [
+      {
+        "label": "before",
+        "at": "2026-11-06T12:19:48.479Z",
+        "listed": true,
+        "opsSeen": 0,
+        "opsIncluded": 0,
+        "status": "ok",
+        "isStaked": true,
+        "raw": {
+          "address": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "opsSeen": 0,
+          "opsIncluded": 0,
+          "status": "ok",
+          "isWhitelisted": false,
+          "isBlacklisted": false,
+          "stake": "0x2aa1efb94e0000",
+          "unstakeDelaySec": 86400,
+          "withdrawTime": "0x0",
+          "isStaked": true
+        }
+      },
+      {
+        "label": "crash-before",
+        "at": "2026-11-06T12:19:52.725Z",
+        "listed": true,
+        "opsSeen": 0,
+        "opsIncluded": 0,
+        "status": "ok",
+        "isStaked": true,
+        "raw": {
+          "address": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "opsSeen": 0,
+          "opsIncluded": 0,
+          "status": "ok",
+          "isWhitelisted": false,
+          "isBlacklisted": false,
+          "stake": "0x2aa1efb94e0000",
+          "unstakeDelaySec": 86400,
+          "withdrawTime": "0x0",
+          "isStaked": true
+        }
+      },
+      {
+        "label": "crash-after",
+        "at": "2026-11-06T12:27:20.840Z",
+        "listed": true,
+        "opsSeen": 11,
+        "opsIncluded": 11,
+        "status": "ok",
+        "isStaked": true,
+        "raw": {
+          "address": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "opsSeen": 11,
+          "opsIncluded": 11,
+          "status": "ok",
+          "isWhitelisted": false,
+          "isBlacklisted": false,
+          "stake": "0x2aa1efb94e0000",
+          "unstakeDelaySec": 86400,
+          "withdrawTime": "0x0",
+          "isStaked": true
+        }
+      }
+    ]
   }
 }
