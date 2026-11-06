@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FOUNDRY_VERSION: v1.8.1 # the forge we develop with; foundry.toml pins isolate = false for it
+  FOUNDRY_OFFLINE: "false" # foundry.toml is offline for local work; CI may download solc on a cache miss
+  JUST_VERSION: "1.58.0"
+  NODE_VERSION: "22"
+
+jobs:
+  contracts:
+    name: contracts (unit, fuzz, invariants, gas report)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - name: Cache solc (0.8.26, 0.8.28, 0.8.30)
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/svm
+          key: svm-0.8.26-0.8.28-0.8.30-v1
+      - uses: extractions/setup-just@v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - run: forge --version
+      - name: Unit + fuzz + differential (just test, builds out-aqua first)
+        run: just test
+      - name: Stateful invariants (CI profile, 128 runs x depth 128)
+        env:
+          FOUNDRY_PROFILE: ci
+        run: forge test --match-path "test/invariant/*"
+      - name: Gas report
+        env:
+          FOUNDRY_PROFILE: quick
+        run: forge test --no-match-path "test/invariant/*" --gas-report | tee gas-report.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gas-report
+          path: gas-report.txt
+
+  aqua:
+    name: aqua (SwapVM/Aqua fork, solc 0.8.30)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - name: Cache solc (0.8.26, 0.8.28, 0.8.30)
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/svm
+          key: svm-0.8.26-0.8.28-0.8.30-v1
+      - uses: extractions/setup-just@v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - run: just aqua
+
+  kit:
+    name: kit (typecheck + vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Cache node_modules
+        id: nm
+        uses: actions/cache@v4
+        with:
+          path: |
+            lib/hegota-support/node_modules
+            kit/node_modules
+          key: node_modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles('lib/hegota-support/yarn.lock', 'kit/package-lock.json') }}
+      # hegota-support pins its dependencies with a yarn v1 lockfile (no package-lock.json upstream), so the
+      # frozen-lockfile install is the equivalent of `npm ci` for it.
+      - name: Install hegota-support
+        if: steps.nm.outputs.cache-hit != 'true'
+        working-directory: lib/hegota-support
+        run: yarn install --frozen-lockfile --non-interactive
+      - name: Build hegota-support (dist/ is gitignored)
+        working-directory: lib/hegota-support
+        run: npm run build
+      - name: Install kit
+        if: steps.nm.outputs.cache-hit != 'true'
+        working-directory: kit
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        working-directory: kit
+        run: npx tsc --noEmit
+      - name: Tests
+        working-directory: kit
+        run: npx vitest run
+
+  fork-unichain:
+    name: fork-unichain (C2 against the official Aqua, block 63190327)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UNICHAIN_RPC_URL: ${{ secrets.UNICHAIN_RPC_URL || 'https://mainnet.unichain.org' }}
+      UNICHAIN_FORK_BLOCK: "63190327"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+          # Foundry's RPC cache (~/.foundry/cache/rpc) for the pinned block: reruns hit the cache, not the RPC.
+          cache-key: foundry-rpc-unichain-63190327
+          cache-restore-keys: foundry-rpc-unichain-
+      - name: Cache solc (0.8.26, 0.8.28, 0.8.30)
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/svm
+          key: svm-0.8.26-0.8.28-0.8.30-v1
+      - uses: extractions/setup-just@v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - name: Build the 0.8.30 fork artifacts (out-aqua)
+        run: just aqua-build
+      - name: C2 on the fork (one retry on rate limit; outcome in the job summary)
+        run: ./scripts/ci/fork-c2.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: c2-fork-trace
+          path: c2-fork-trace.txt

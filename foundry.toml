@@ -55,6 +55,12 @@ runs = 100000
 runs = 2000
 depth = 400
 
+# CI: stateful invariants with fewer runs / less depth so the job stays quick (`FOUNDRY_PROFILE=ci`)
+[profile.ci.invariant]
+runs = 128
+depth = 128
+fail_on_revert = false
+
 # fast local iteration: `FOUNDRY_PROFILE=quick forge test`
 [profile.quick.fuzz]
 runs = 256

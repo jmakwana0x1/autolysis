@@ -1,5 +1,7 @@
 # Autolysis
 
+[![CI](https://github.com/jmakwana0x1/autolysis/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jmakwana0x1/autolysis/actions/workflows/ci.yml?query=branch%3Amain)
+
 **Self-liquidating lending.** A position liquidates itself: a keyless frame transaction (EIP-8141) that
 the borrower's own `AutolysisAccount` validates and pays for, carried by the alternative mempool, sells a
 slice of collateral through a Uniswap v4 pool whose hook fills from 1inch Aqua makers first, then the
@@ -117,6 +119,21 @@ just dashboard                         # dashboard on http://127.0.0.1:5173 for 
 
 Toolchain: Foundry ≥ 1.8 (`isolate = false` is pinned in `foundry.toml`), solc 0.8.26 (main) and 0.8.30
 (aqua fork, `out-aqua/`), Node 22, `just`. Keys come from `.env` (devnet-only, never committed).
+
+## Verify it yourself
+
+Every push to `main` runs [CI](https://github.com/jmakwana0x1/autolysis/actions/workflows/ci.yml?query=branch%3Amain)
+([latest run](https://github.com/jmakwana0x1/autolysis/actions/workflows/ci.yml?query=branch%3Amain)) with
+forge 1.8.1, no keys and no devnet. What each job proves:
+
+| Job | Runs | Proves |
+| --- | --- | --- |
+| `contracts` | `just test`; invariants under `FOUNDRY_PROFILE=ci`; `forge test --gas-report` (artifact `gas-report`) | the firewall approves one shape per (position, step) under single-field mutation fuzzing; liquidation math never lowers HF and matches the kit to the wei; the never-revert envelope; v4 hook + venue liquidation (C1: hook tier 1 through the real gated SwapVM router + Aqua); D1 fallback; collateral/debt conservation and "classic never preempts self-liquidation" as stateful invariants |
+| `aqua` | `just aqua` | the gated SwapVM/Aqua fork (solc 0.8.30): `LiquidationGate` blocks strangers and inactive venues; the oracle pricer's quote equals its fill |
+| `kit` | `tsc --noEmit` + `vitest` | the frame-tx builder round-trips through the real hegota-support encoder; simulate is sent the raw 0x06 bytes; `just gate-a` and the Phase B scenes behave as specified against a mocked RPC (stop on first error, idempotent rerun, replacement, attack rejection); the EXO-010 simulator |
+| `fork-unichain` | `scripts/ci/fork-c2.sh` | C2: the same liquidation flow fills through the **official** Aqua `0x1111…a90a` on a Unichain mainnet fork pinned to block 63,190,327 (trace artifact `c2-fork-trace`). A public-RPC rate limit is retried once and, if it persists, reported in the job summary |
+
+Not in CI, by design: anything that needs devnet ETH or a private key (`just gate-a`, `just e2e`).
 
 ## Limitations (honest list)
 
