@@ -8,7 +8,7 @@ import { frameMode, type FrameTx } from "@forshtat/hegota-support/tx";
 import { runGateA, defaultConfig, type Store } from "../src/gateA/gateA.js";
 import type { ChainIO, FrameIO, FrameReceipt } from "../src/gateA/io.js";
 import { accountAbi } from "../src/gateA/abis.js";
-import { attacks, crash, replace, reputation, uniswapBalances, OFFICIAL_POOL_MANAGER, type SceneDeps } from "../src/scenes/phaseB.js";
+import { attacks, crash, crashResend, replace, reputation, uniswapBalances, OFFICIAL_POOL_MANAGER, type SceneDeps } from "../src/scenes/phaseB.js";
 import type { EthrexSimResult } from "../src/sim.js";
 
 const A = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
@@ -207,6 +207,31 @@ describe("Phase B scenes", () => {
     h.deps.frame.simulate = async (tx) => ({ ...(await sim(tx)), frames: [{ gasUsed: "0x1869c", succeeded: true }, { gasUsed: "0x927c0", succeeded: true }] }); // 99,996 + 100 > 99,900
     await expect(crash(h.deps)).rejects.toThrow(/pre-check failed, nothing sent/);
     expect(h.sent).toHaveLength(0);
+  });
+
+  it("crash-resend: a send lost in transport is resent alone on a fresh round and completes 12/12", async () => {
+    const h = await setup();
+    const send = h.deps.frame.sendFrame;
+    let lost = false;
+    h.deps.frame.sendFrame = async (tx) => {
+      if (!lost && posOf(tx) === 3n) {
+        lost = true;
+        throw new Error("fetch failed");
+      }
+      return send(tx);
+    };
+    const r = await crash(h.deps);
+    expect(r.summary.liquidationOk).toBe(11);
+    expect(r.ok).toBe(false);
+    const roundsBefore = h.w.rounds.length;
+    const rr = await crashResend(h.deps, 3n);
+    expect(rr.ok).toBe(true);
+    expect(h.w.rounds.length).toBe(roundsBefore + 1); // fresh round first
+    expect(BigInt((rr as any).round)).toBe(BigInt(h.w.rounds.length));
+    const rec = h.store.state.scenes.crash;
+    expect(rec.summary).toMatchObject({ liquidationOk: 12, included: 12, resent: ["3"] });
+    expect(rec.items[0].alt.error).toBe("fetch failed"); // the original miss stays recorded
+    await expect(crashResend(h.deps, 3n)).rejects.toThrow(/already sent|healthy/);
   });
 
   it("replace: same key + sequence, both fees +10%, newer round -> the new tx is included, the old is cancelled", async () => {

@@ -11,7 +11,8 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { rpc } from "@forshtat/hegota-support/rpc";
 import { toWire } from "@forshtat/hegota-support/rpc";
-import type { FrameTx } from "@forshtat/hegota-support/tx";
+import { txHash, type FrameTx } from "@forshtat/hegota-support/tx";
+import { profile } from "@forshtat/hegota-support/profiles/ethrex-eip8141-tracer";
 import { ROOT } from "../registry.js";
 import { simulate as simulateRaw, type EthrexSimResult } from "../sim.js";
 
@@ -138,8 +139,25 @@ export function realFrameIO(cfg: IoConfig): FrameIO {
   return {
     simulate: (tx) => simulateRaw((m, p) => rpc(cfg.ethrexUrl, m, p ?? []), tx),
     sendRaw: (raw) => jsonRpcRaw(cfg.rpcUrl, "eth_sendRawTransaction", [raw]),
+    // One transport-level retry: if the request got no response (e.g. "fetch failed"), first ask the sidecar
+    // whether it already holds this exact tx (by hash); only if it does not, resend the identical bytes once.
+    // Same bytes => same hash and nonce, so a retry can never produce a second liquidation.
     sendFrame: async (tx) => {
-      const r = await jsonRpcRaw(cfg.frameUrl, "eth_sendFrameTransaction", [toWire(tx)]);
+      const hash = txHash(profile, tx) as Hex;
+      const send = () => jsonRpcRaw(cfg.frameUrl, "eth_sendFrameTransaction", [toWire(tx)]);
+      let r: RawResponse;
+      try {
+        r = await send();
+      } catch (e1) {
+        await new Promise((res) => setTimeout(res, 3_000));
+        const known = await jsonRpcRaw(cfg.frameUrl, "skandha_frameTransactionStatus", [hash]).catch(() => null);
+        if (known?.ok && (known.result as any)?.status) return hash;
+        try {
+          r = await send();
+        } catch (e2) {
+          throw new Error(`eth_sendFrameTransaction transport failure twice (${(e1 as Error).message}; ${(e2 as Error).message}); ${hash} not known to the sidecar`);
+        }
+      }
       if (!r.ok) throw new Error(`eth_sendFrameTransaction rejected: ${r.text}`);
       return r.result as Hex;
     },

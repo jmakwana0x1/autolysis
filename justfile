@@ -73,8 +73,8 @@ probe:
     just gen
 
 # Phase B, one devnet scene: crash | replace | attacks | uniswap-balances (needs a passed `just gate-a`)
-scene name:
-    cd kit && CHAIN_ID=${CHAIN_ID:-1337} npx tsx src/scenes/run.ts {{name}}
+scene name arg="":
+    cd kit && CHAIN_ID=${CHAIN_ID:-1337} npx tsx src/scenes/run.ts {{name}} {{arg}}
 
 # Snapshot skandha_explorer_listReputation for the account (label e.g. before/after) into the EXO-010 data
 reputation label="manual":

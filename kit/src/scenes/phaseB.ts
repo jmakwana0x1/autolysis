@@ -245,6 +245,46 @@ export async function crash(d: SceneDeps, n = 12) {
   return rec;
 }
 
+/** Resend ONE crash position whose alt send never reached a sidecar (e.g. "fetch failed"). Posts a fresh
+ *  same-price round first (a round older than 1 h can no longer be liquidated against), re-simulates,
+ *  repeats the canonical attempt, sends to the alt mempool, waits for the receipt and records the result on
+ *  that position's crash item under `retry`. */
+export async function crashResend(d: SceneDeps, positionId: bigint) {
+  const x = context(d);
+  const rec = x.state.scenes.crash;
+  const item = rec?.items?.find((i: any) => i.positionId === positionId.toString());
+  if (!item) throw new Error(`position ${positionId} is not a crash-scene position`);
+  if (item.alt?.admitted || item.retry?.included) throw new Error(`position ${positionId} was already sent/included; refusing`);
+  const hf = await x.chain.read<bigint>(x.market, marketAbi, "healthFactor", [positionId]);
+  if (hf >= WAD) throw new Error(`position ${positionId} is healthy (HF ${hf}); nothing to resend`);
+  const retry: Record<string, any> = (item.retry = { startedAt: x.now().toISOString() });
+  const { price } = await latestRound(x);
+  retry.freshRoundTx = (await x.chain.write(x.c.RoundFeed, feedAbi, "post", [price])).hash;
+  const round = (await latestRound(x)).id;
+  retry.round = round.toString();
+  retry.snapshots = await snapshots(x, [positionId], round);
+  const tx = canonicalLiquidationTx(await params(x, positionId, round));
+  const s = summarize(await x.frame.simulate(tx));
+  retry.simulate = { verifyGasUsed: s.verifyGasUsed, verifySucceeded: s.verifySucceeded, executeSucceeded: s.executeSucceeded, failure: s.failure };
+  x.save();
+  if (!(s.verifySucceeded && s.executeSucceeded)) throw new Error(`resend no longer simulates: ${s.failure ?? s.executionStatus}`);
+  const canon = await x.frame.sendRaw(rawFrameTx(tx));
+  retry.canonical = { accepted: canon.ok, responseText: canon.text };
+  retry.alt = await sendFrameSafe(x, tx);
+  x.save();
+  if (!retry.alt.admitted) throw new Error(`alt send failed again: ${retry.alt.error}`);
+  const r = await waitReceipt(x.frame, retry.alt.hash, x.cfg, x.sleep);
+  retry.included = receiptOk(r);
+  retry.outcome = liquidationOutcome(r, x.account, positionId);
+  retry.block = r.blockNumber ?? null;
+  // Fold into the scene summary (the original miss stays recorded on the item).
+  const all = rec.items.map((i: any) => ({ canonAccepted: i.canonical.accepted || i.retry?.canonical?.accepted, admitted: i.alt.admitted || i.retry?.alt?.admitted, included: i.included || i.retry?.included, ok: i.outcome === "LiquidationOk" || i.retry?.outcome === "LiquidationOk" }));
+  rec.summary = { ...rec.summary, canonicalAccepted: all.filter((a: any) => a.canonAccepted).length, altAdmitted: all.filter((a: any) => a.admitted).length, included: all.filter((a: any) => a.included).length, liquidationOk: all.filter((a: any) => a.ok).length, resent: [positionId.toString()] };
+  rec.ok = rec.summary.liquidationOk === rec.summary.positions;
+  x.save();
+  return { ok: retry.outcome === "LiquidationOk", positionId: positionId.toString(), ...retry };
+}
+
 // ------------------------------------------------------------------------------------------ B2 replace
 
 export async function replace(d: SceneDeps) {

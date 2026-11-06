@@ -9,10 +9,14 @@ import { ENDPOINTS, frameSendUrl } from "../endpoints.js";
 import { defaultConfig } from "../gateA/gateA.js";
 import { realChainIO, realFrameIO, type IoConfig } from "../gateA/io.js";
 import { fileStore } from "../gateA/store.js";
-import { attacks, crash, replace, reputation, uniswapBalances, type SceneDeps } from "./phaseB.js";
+import { attacks, crash, crashResend, replace, reputation, uniswapBalances, type SceneDeps } from "./phaseB.js";
 
 const scenes: Record<string, (d: SceneDeps, arg?: string) => Promise<Record<string, any>>> = {
   crash: (d) => crash(d),
+  "crash-resend": (d, pos) => {
+    if (!pos) throw new Error("usage: scene crash-resend <positionId>");
+    return crashResend(d, BigInt(pos));
+  },
   replace: (d) => replace(d),
   attacks: (d) => attacks(d),
   "uniswap-balances": (d) => uniswapBalances(d),
