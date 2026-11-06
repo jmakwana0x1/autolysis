@@ -5,7 +5,7 @@
 **Self-liquidating lending.** A position liquidates itself: a keyless frame transaction (EIP-8141) that
 the borrower's own `AutolysisAccount` validates and pays for, carried by the alternative mempool, sells a
 slice of collateral through a Uniswap v4 pool whose hook fills from 1inch Aqua makers first, then the
-house's deposits, then the curve. No liquidator, no auction, and no liquidation bonus taken from the
+house's deposits, then the curve. No privileged keeper and no liquidation bonus taken from the
 borrower.
 
 > Status labels used everywhere: **on devnet** · **on fork** · **local test** · **mock only** ·
@@ -24,22 +24,27 @@ collateral being sold. The cost to the borrower is the sale's haircut against th
 when tier 1 or tier 2 fills, since both price at the cited round), plus a gas fee capped at
 `min(MAX_COST, 0.3% of collateral sold)`.
 
-### Net cost per liquidation (**local test**, `just demo-local`)
+### Net cost per liquidation
 
-The first liquidation from `just gate-a-local` (anvil, frame RPCs mocked; the dashboard's "Net saved"
-panel computes this live):
+One liquidation of a 150-USDC loan (HF 0.864), in the same units as the fork proof below:
 
-| | Classic (5% bonus, D1 rate) | Autolysis |
+| | Classic (5% bonus, the D1 rate) | Autolysis |
 | --- | ---: | ---: |
-| Debt repaid | 0.0563 USDC | 0.0563 USDC |
-| Bonus paid by the borrower | 0.0028 USDC | 0 |
-| Sale haircut vs cited price (tier 2 fill) | n/a | 0.0000 USDC |
-| Gas, billed in collateral to the account | paid by the liquidator out of the bonus | 0.000169 USDC |
-| **Borrower's cost** | **0.0028 USDC (5.0%)** | **0.000169 USDC (0.3%)** |
+| Debt repaid | 116.2587 USDC | 116.2587 USDC |
+| Bonus paid by the borrower | 5.8129 USDC | 0 |
+| Sale haircut vs the cited price (71.9090 COL at 1.62 = 116.4926) | n/a | 0.2339 USDC |
+| Gas, billed in collateral to the account (`min(MAX_COST, 0.3% sold)`) | paid by the liquidator out of the bonus | 0.0073 USDC |
+| **Borrower's cost** | **5.8129 USDC (5.0%)** | **0.2412 USDC (0.21%)** |
 
-Health factor 0.960 → 1.055 in one gradual step (collateral 0.100 → 0.069 WETH, debt 0.150 → 0.094
-USDC). The same figures on the devnet are produced by `just gate-a`: <!-- EXPLORER: gate-a --> **TBD:
-devnet explorer link**.
+Sources:
+- **The sale** is `just fork-uniswap` (**on fork**, the official Uniswap v4 PoolManager): tier 2 (house)
+  plus tier 3 (the official pool's curve, 0.30% fee tier). The haircut is the curve's fee and slippage on the
+  tier-3 part.
+- **The gas line** is the devnet's simulated `MAX_COST` for the liquidation (0.004524 ETH, **on devnet**),
+  priced at 1.62.
+
+The live devnet liquidation in block 2865 shows the same mechanics on chain:
+[0x913762f6…fe56](https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc).
 
 ## How one liquidation flows
 
@@ -170,8 +175,7 @@ included, while the canonical mempool rejected the same transaction.
 | | hook tier 1 → gated router as taker, across solc 0.8.26/0.8.30 | `src/backstop/BackstopHook.sol:245`, `:264`, `src/interfaces/ISwapVMRouter.sol:14` | `test/integration/C1_SwapVMTier1.t.sol:191` | local test |
 | | the same against the **official Aqua** `0x1111…a90a` **and the official PoolManager** on a Unichain fork | `test/fork/C2_OfficialAqua.t.sol:11` (`just fork-c2`) | balance table above; trace `deployments/c2-fork-trace.txt` (block 63,190,327) | **on fork** |
 
-Explorer links per environment: devnet <!-- EXPLORER: devnet --> **TBD** · Unichain fork: n/a (local
-fork, trace committed) · local: n/a.
+Explorer links per environment: devnet: [Gate A liquidation, block 2865](https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) · Unichain fork: n/a (a local fork; the traces are committed) · local: n/a.
 
 ## Integrating another market: `ISelfLiquidatingMarket`
 
