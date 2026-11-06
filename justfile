@@ -46,6 +46,14 @@ quick:
 gate-a:
     cd kit && CHAIN_ID=1337 npx tsx src/gateA/run.ts
 
+# D3 dashboard on http://127.0.0.1:5173 for CHAIN_ID (default 1337) via RPC_URL (default the gateway)
+dashboard:
+    CHAIN_ID=${CHAIN_ID:-1337} node app/server.mjs
+
+# Local demo: anvil + mock frame node, gate-a, crash, reputation, then the dashboard (stays up)
+demo-local:
+    KEEP_RUNNING=1 ./kit/scripts/gate-a-local.sh
+
 # gate-a against anvil + a MOCK frame node (frame RPCs canned / SENDER frame emulated), run twice
 gate-a-local:
     ./kit/scripts/gate-a-local.sh

@@ -3,6 +3,7 @@
 # proves idempotence). Writes deployments/31337.json (gitignored). Labels: deploy/legacy/SENDER emulation
 # are local test; every frame-RPC answer is mock.
 set -euo pipefail
+export PATH="$HOME/.foundry/bin:$PATH"
 cd "$(dirname "$0")/../.."
 REG=0xD51c04d7A0B01124E84DE152F4e56d9eeCB22D2F
 PK0=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80   # anvil's well-known key 0
@@ -28,4 +29,10 @@ if [ "${PHASE_B:-1}" = "1" ]; then
   echo "=== scene crash";            scene crash | tail -12
   echo "=== scene uniswap-balances"; scene uniswap-balances | tail -4
   echo "=== reputation after";       scene reputation after | tail -2
+fi
+# `just demo-local`: keep anvil + the mock node up and serve the dashboard against them (Ctrl-C stops all).
+if [ "${KEEP_RUNNING:-0}" = "1" ]; then
+  echo "=== dashboard (local chain 31337, frame RPCs mocked)"
+  CHAIN_ID=31337 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 PRIVATE_KEY=$PK0 GATE_A_POLL_MS=200 \
+    node app/server.mjs
 fi
