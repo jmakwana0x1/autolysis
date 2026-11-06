@@ -1,4 +1,20 @@
 {
   "chainId": 1337,
-  "contracts": {}
+  "contracts": {},
+  "gateA": {
+    "steps": {
+      "preflight": {
+        "deployerBalanceWei": "2000000000000000000",
+        "ok": true,
+        "at": "2026-11-06T09:04:05.279Z"
+      }
+    },
+    "deployer": "0x3a5474DB6D5B4CBC51F0E9878758E077FFe3Fc40",
+    "updatedAt": "2026-11-06T09:05:22.723Z",
+    "failed": {
+      "step": "deploy",
+      "error": "forge script Deploy.s.sol failed (exit 1):\nChain 1337\nEstimated gas price: 0.002 gwei\nEstimated total gas used for script: 17796674\nEstimated amount required: 0.000035593348 ETH\n==========================\nTransactions saved to: /home/jay/autolysis/broadcast/Deploy.s.sol/1337/run-latest.json\nSensitive values saved to: /home/jay/autolysis/cache/Deploy.s.sol/1337/run-latest.json\nWarning: Detected artifacts built from source files that no longer exist. Run `forge clean` to make sure builds are in sync with project files.\n - /home/jay/autolysis/foundry-pp/DeployHelper47.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper122.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper124.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper123.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper102.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper109.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper30.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper45.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper46.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper31.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper111.sol\n - /home/jay/autolysis/foundry-pp/DeployHelper44.sol\nWarning: EIP-3855 is not supported in one or more of the RPCs used.\nUnsupported Chain IDs: 1337.\nContracts deployed with a Solidity version equal or higher than 0.8.20 might not work properly.\nFor more information, please see https://eips.ethereum.org/EIPS/eip-3855\nError: Transaction Failure: 0x1d0ac92148a1d88f9b0b19d9c6f9e2764ec57e7c0facd19b468c74c51aa3debf",
+      "at": "2026-11-06T09:05:22.723Z"
+    }
+  }
 }
