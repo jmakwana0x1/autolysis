@@ -130,13 +130,25 @@ outside a liquidation, revert with `LiquidationGateClosed`.
 | Uniswap fork tests: full liquidation; outside swapper sees a normal pool | `test/fork/UniswapOfficialPoolManager.t.sol:153`, `:200` (hook mined + CREATE2 at `:71`) |
 | 1inch fork test (C2) = the C1 flow on official contracts | `test/fork/C2_OfficialAqua.t.sol:11` → `test/integration/C1_SwapVMTier1.t.sol:197`, `:252` |
 
-### EF alt mempool: on the devnet (partial)
+### EF alt mempool: on the devnet
 
-Deployed and staked on chain 1337. The real `ethrex_simulateFrameTransaction` VERIFY gas is **94,168**
-(outside reads, chosen) and **71,892** (storage-only). The canonical mempool rejected the liquidation with
-`"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender"`, and the alt
-mempool admitted it (all 17 admission checks passed), but the relayer dropped it after 4 attempts without
-inclusion. See `deployments/1337.json` and `docs/STATUS.md`.
+**Gate A passed on chain 1337**: one keyless, self-paid liquidation was admitted by the alt mempool and
+included, while the canonical mempool rejected the same transaction.
+
+- Liquidation `0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56`: block 2865, type `0x6`,
+  sent by the AutolysisAccount `0x91233f8dEf56AC435a7F658AC8F96C591939cd40` itself, both frames `0x1`,
+  `LiquidationOk`. [Explorer](https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc)
+- The account staked 0.012 ETH: tx `0x1e5a936bec5ef1bf15d8627087912f1def6b22a2a413cc469034e9ea312fed4b`.
+- VERIFY gas from `ethrex_simulateFrameTransaction`: **94,168** reading the market (chosen; must stay under
+  100,000) and **71,892** storage-only.
+- Canonical mempool, exact response: `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Invalid
+  params: Frame transaction validation-prefix simulation failed: StorageReadNonSender"}}`
+- The position went from HF 0.960 to 1.055 (debt 0.150 → 0.094 USDC). 0.0000939 WETH of collateral was billed
+  as gas and sent to the account. The hook ends with 0 tokens and 0 claims. Everything is recorded in
+  `deployments/1337.json`.
+- A first attempt (archived in `deployments/1337.run1-stuck.json`) was admitted but never included. It was
+  sent through the gateway sidecar (manual bundling), then re-sent to the miner and dropped after 4
+  relays. The successful run used fresh entities, sent through the miner sidecar, and cited a fresh round.
 
 ## Sponsor tracks: where to look
 
@@ -215,8 +227,8 @@ Not in CI, by design: anything that needs devnet ETH or a private key (`just gat
 
 ## Limitations (honest list)
 
-- **Nothing has run on the devnet yet.** The deploy keys are unfunded (the faucet said "The faucet is
-  empty"). Every devnet line above is **written, not run** until `just gate-a` passes.
+- **On the devnet, only Gate A has run.** Phase B (`just e2e`: crash ×12, replacement, attacks) is
+  written and unit-tested but not yet run on chain.
 - **VERIFY gas is mock-measured.** 71,822 (outside reads) / 50,414 (storage-only) on a cost-realistic mock.
   `just gate-a` measures both with `ethrex_simulateFrameTransaction` and picks the path by the rule.
 - **The storage-only snapshot is a separate transaction** (`pushVerifySnapshot`), not yet written by the
