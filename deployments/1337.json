@@ -5386,6 +5386,77 @@
         "sender": "0x3C8fCdcC07bA485593db8dd359e1A58580Cc4d2f",
         "payer": "0x3C8fCdcC07bA485593db8dd359e1A58580Cc4d2f",
         "status": "New"
+      },
+      "relay": {
+        "simulateBeforeSend": {
+          "at": "2026-11-06T09:31:34.152Z",
+          "canonicalValid": false,
+          "canonicalViolation": "StorageReadNonSender",
+          "maxCost": "4523644000000000",
+          "verifyGasUsed": 94168,
+          "verifySucceeded": true,
+          "executeGasUsed": 363877,
+          "executeSucceeded": true,
+          "executionStatus": "success",
+          "failure": null
+        },
+        "sendTo": "https://altmempool.forshtat.com/rpc",
+        "sentAt": "2026-11-06T09:31:37.303Z",
+        "sendResponse": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0xd470efa49846eb570e404fa1998aebd454914028d595835bb0cf364578bb19c4\"}",
+        "statusFinal": {
+          "tx": {
+            "chainId": "0x539",
+            "nonceKeys": [
+              "0x67d3475dc6e54902d2db2c6a02cd899d9c6637e2982890e99115d1c2486248"
+            ],
+            "nonceSeq": "0x0",
+            "sender": "0x3C8fCdcC07bA485593db8dd359e1A58580Cc4d2f",
+            "frames": [
+              {
+                "mode": "0x1",
+                "flags": "0x3",
+                "target": null,
+                "limits": {
+                  "execution": "0x1863c",
+                  "state": "0x241d0"
+                },
+                "value": "0x0",
+                "data": "0x3ad51b8d"
+              },
+              {
+                "mode": "0x2",
+                "flags": "0x0",
+                "target": null,
+                "limits": {
+                  "execution": "0x16e360",
+                  "state": "0x7a120"
+                },
+                "value": "0x0",
+                "data": "0xf3ab9cad00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002"
+              }
+            ],
+            "signatures": [
+              {
+                "scheme": "0x0",
+                "signer": "0x",
+                "msg": "0x",
+                "signature": "0x"
+              }
+            ],
+            "fees": {
+              "maxPriorityFeePerGas": "0x77359400",
+              "maxFeePerGas": "0x77359400",
+              "maxFeePerBlobGas": "0x0"
+            },
+            "blobVersionedHashes": [],
+            "recentRootReferences": []
+          },
+          "sender": "0x3C8fCdcC07bA485593db8dd359e1A58580Cc4d2f",
+          "payer": "0x3C8fCdcC07bA485593db8dd359e1A58580Cc4d2f",
+          "status": "Cancelled",
+          "reason": "relayed 4 times without being included in a block"
+        },
+        "timedOutAt": "2026-11-06T09:36:41.723Z"
       }
     },
     "failed": {
