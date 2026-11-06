@@ -1,123 +1,139 @@
-# DESIGN.md — Autolysis v4
+# DESIGN.md: Autolysis
 
-Autolysis is a self-liquidating lending market. A borrower's position is wound down by a keyless
-carrier transaction that only the alternative mempool admits; the borrower's own account validates and
-pays for it, and the collateral is sold through a Uniswap v4 pool whose hook sources liquidity from
-1inch Aqua makers first, then the house's deposits, then the plain curve. This document records the
-decisions behind that, and the one place two stated guarantees genuinely conflict.
+Autolysis is a self-liquidating lending market. An unhealthy position is wound down by a **keyless frame
+transaction** (EIP-8141). The position's own `AutolysisAccount` validates it in a VERIFY frame and pays for
+it as the sender. The SENDER frame sells a slice of collateral through a Uniswap v4 pool, whose
+`BackstopHook` fills from 1inch Aqua makers first, then the house's deposits, then the pool's curve. Gas is
+billed from the collateral being sold. If the carrier stays offline, a classic 5%-bonus fallback opens to
+anyone.
 
-## One liquidation, three backstop tiers
+This document records the current design, the one place two stated guarantees conflict, and the threat
+model. What runs where is in [`STATUS.md`](STATUS.md); the devnet facts are in [`DEVNET.md`](DEVNET.md).
+
+## One liquidation, end to end
 
 ```
-carrier (no key) ──▶ alternative mempool ──▶ AutolysisAccount ──▶ AutolysisMarket
-                                             VERIFY + pay            │ sells a slice
-                                                                     ▼
-                                              Uniswap v4 pool + BackstopHook
-                                                     │ waterfall
-                                     tier 1 Aqua makers → tier 2 deposits → tier 3 curve
+carrier (no key) ─eth_sendFrameTransaction─▶ alt mempool (miner sidecar; the account is staked)
+                                               │
+  frame 0  VERIFY  AutolysisAccount.verifyLiquidation()   read-only; APPROVE(EXECUTION_AND_PAYMENT)
+  frame 1  SENDER  AutolysisAccount.selfLiquidate(id, R)  never reverts
+                     └─ AutolysisMarket.executeLiquidation(id, R, MAX_COST)
+                          ├─ LiquidationMath.computeStep at round R's price
+                          ├─ V4Venue.sellCollateral  → PoolManager.unlock
+                          │     settle collateral first, then swap exact-in with the liquidation flag
+                          │     BackstopHook._beforeSwap waterfall:
+                          │        tier 1  gated SwapVM router → Aqua makers (oracle-priced)
+                          │        tier 2  house deposits (priced at R)
+                          │        tier 3  the pool's own curve (minOut enforced by the venue)
+                          └─ bill gas: min(MAX_COST, 0.3% of collateral sold) of WETH → unwrap → account
 ```
 
-The dashed data line in the plan is the oracle (`RoundFeed`): both the market's step math and the
-account's VERIFY read it, and the hook prices maker/deposit fills from it.
+## The design, piece by piece
 
-## Why these shapes
+- **VERIFY approves exactly one shape per (position, step).** `FirewallRules.check`
+  (`src/libraries/FirewallRules.sol`) is a pure function over a fixed-size `CanonicalView`: 15 frame-opcode
+  reads via `IFrameEnv.loadCanonical()`, with no dynamic ABI decoding. It requires:
+  - exactly two frames: frame 0 in VERIFY mode with scope EXECUTION_AND_PAYMENT, frame 1 in SENDER mode
+    targeting the account with no value;
+  - frame 1 calling `selfLiquidate(positionId, roundId)` (68 bytes);
+  - exactly one nonce key, `H(market, positionId)` with the top byte cleared;
+  - MAX_COST within the account's fee cap;
+  - a state budget for a first-use key.
 
-- **The firewall is a pure function.** `FirewallRules.check` approves exactly one transaction shape per
-  `(position, step)`. Keeping it pure (`TxView` in, `Reject` out) is what lets the whole firewall be
-  fuzzed locally against a mocked frame environment even though Forge cannot execute the frame opcodes.
-  `IFrameEnv` is the single seam: real opcodes on the devnet, an injected mock in Foundry.
-- **The account never reverts during execution.** A failed liquidation must not be able to drain the
-  borrower-funded gas tank, so `AutolysisAccount.execute` wraps the market call in a try/catch envelope
-  that, on any failure, bills at most the failed-attempt cap and returns cleanly. The reservation is
-  taken before the attempt so the tank accounting is exact whether the attempt succeeds or fails.
-- **The market sells gradually.** `LiquidationMath` raises the close factor from 10% at HF 1.00 to 100%
-  at HF 0.95, so a mildly unhealthy position is wound down in slices and a deeply unhealthy one can be
-  taken whole. A transient "liquidation active" flag (EIP-1153) plus settle-before-swap keeps the sale
-  atomic and reentrancy-safe, and `TankLedger` conserves deposits = balance + billed at all times.
-- **The breaker needs two rounds.** `RoundFeed.priceForLiquidation` reverts rather than return a price
-  outside the band, and a move over 10% needs a confirming round before it is usable, so a single oracle
-  spike cannot drive a liquidation. The feed is the only price a liquidation may read.
-- **The hook is invisible to everyone else.** `BackstopHook` returns `ZERO_DELTA` for any swap that is
-  not a registered market's flagged liquidation, so an outside swapper sees a vanilla pool to the wei.
-  A registered liquidation is filled with return-delta accounting through the three-tier waterfall.
-- **The Aqua tier is gated.** `AutolysisAquaRouter` (our SwapVM redeploy) fills maker strategies only
-  when the caller is the hook and the gate is open — no one outside a liquidation can touch a maker.
-  Strategies run from an allowlisted EIP-1167 clone template under a per-maker gas stipend, so a
-  gas-bomb or rugging maker is cut off and skipped to the next tier. Pricing (oracle − base spread + vol
-  add-on) is shared by `quote()` and the fill, so a quote always equals the fill.
+  APPROVE itself enforces that the sender and frame-0 target are the account (`resolved_target ==
+  tx.sender`). Then the round/health gate checks that the cited round R is newer than `lastAttemptRound`,
+  and that the position is unhealthy at R's price and at the latest price. That data comes either from
+  the market directly (outside reads, which need the account staked) or from a snapshot in the account's
+  own storage (storage-only). On the devnet, simulate measured 94,168 and 71,892 VERIFY gas; outside
+  reads is the path in use.
+- **One nonce lane per position.** EIP-8250 keyed nonces let 12 liquidations of 12 positions sit pending
+  from one sender without blocking each other. A newer round replaces a pending tx on the same key with
+  a +10% fee bump.
+- **The SENDER frame never reverts.** `selfLiquidate` accepts calls only from the account itself (C1). It
+  calls `executeLiquidation` in a try/catch. On failure it bills `min(MAX_COST, maxFailedGasBill)` and
+  records the attempt, so a failing liquidation cannot loop or drain anything.
+- **Gas is billed from the collateral being sold (H2).** No separate gas tank. The market takes `min(MAX_COST,
+  0.3% of collateral sold)` of WETH collateral, unwraps it and sends the ETH to the account, which keeps
+  the account funded for its next frame tx. The borrower never pays more than the MAX_COST they implicitly
+  accept by being liquidatable.
+- **One attempt per round, success or failure.** `lastAttemptRound[id]` advances on every attempt.
+  VERIFY rejects any round at or below it, so a failed attempt cannot be retried at the same price, and a
+  new round is needed (C2/H1).
+- **The oracle can't be spiked into a liquidation.** `RoundFeed` caps a move at 10% per round. A larger
+  move trips a two-round breaker, VERIFY only accepts the last K = 4 rounds, and the SENDER path rejects
+  rounds older than one hour.
+- **Gradual sale.** `LiquidationMath` raises the close factor from 10% at HF 1.00 to 100% at HF 0.95 and
+  targets HF 1.05. Proceeds go to the debt first. Surplus is credited to the borrower; if the whole
+  position is sold and debt remains, the shortfall is written off as bad debt (H3).
+- **Settle-before-swap (N4).** `V4Venue.unlockCallback` settles the collateral into the PoolManager
+  *before* `swap`. So inside `beforeSwap` the hook can pay makers and the house real tokens; the hook ends
+  every swap holding no tokens and no ERC-6909 claims. The swap's collateral debit nets against that
+  credit.
+- **The hook is invisible to everyone else.** `BackstopHook._beforeSwap` fills only when the caller
+  (`sender`, the unlock caller) is a registered venue, that venue reports a liquidation in progress (a
+  transient flag), and the swap is exact-in into the debt token. Otherwise it returns `ZERO_DELTA`, so an
+  outside swapper, even one claiming to be a liquidation in `hookData`, sees a normal pool.
+- **Tier 1 is gated SwapVM over Aqua.** `AutolysisAquaRouterGated` (`aqua-fork/`, solc 0.8.30, SwapVM-1.1
+  licence) is 1inch's `AquaSwapVMRouter` plus one opcode. `LiquidationGate` (`0xf9`) reverts unless the
+  taker is the hook and the venue reports a live liquidation. A maker ships the program
+  `[gate][Extruction → LiquidationPricer(venue.price())][Salt]` into Aqua, with funds staying in the
+  maker's wallet. For each owner-registered order the hook:
+  1. sizes the fill to the maker's Aqua balance at the cited price;
+  2. quotes it and skips the order unless it pays at least the cited price;
+  3. takes exactly that much collateral and approves exactly that much;
+  4. swaps as the taker, under a gas cap;
+  5. settles back any unused collateral, and reverts the whole liquidation if a fill underpays.
 
-## The one real conflict: HF-preservation vs. protocol-favoring rounding
+  The hook calls the 0.8.30 router across the compiler boundary through an ABI-only interface
+  (`src/interfaces/ISwapVMRouter.sol`).
+- **The classic fallback (D1).** If the carrier is offline, a keeper calls `markUnhealthy(id)` each round.
+  The streak counts consecutive rounds in which the position was unhealthy at that round's live price.
+  Any position change, or a successful self-liquidation, resets it; failed attempts don't. After 3 such
+  rounds, and with HF below 0.95, **anyone** may repay up to 50% of the debt for collateral at a 5% bonus.
+  The streak is counted on chain rather than reconstructed, so the fallback opens only on rounds where
+  self-liquidation really was possible and didn't happen. A stateful invariant enforces this.
 
-The plan lists two properties for `LiquidationMath`: *a step never lowers the health factor*, and
-*rounding always favors the protocol*. For a single no-bonus self-liquidation trade these are opposed at
-the wei: rounding the collateral sale **up** (protocol-favoring) sells the borrower a hair more
-collateral per unit of debt cleared, which lowers HF; rounding it **down** protects HF but hands the
-borrower a sliver. They cannot both hold exactly on the same quantity.
+## The one real conflict: HF-preservation vs protocol-favouring rounding
 
-The resolution, chosen deliberately: **HF-preservation is the headline guarantee** for the step, since
-self-liquidation exists to protect the borrower. In the regime the system operates in — a position still
-over-collateralized by value (`V > D`), i.e. HF above the liquidation threshold but below 1 — a step
-never lowers HF; the only erosion is sub-wei integer-collateral rounding, bounded by the value of one
-indivisible collateral unit and absorbed by the `V > D` margin (the fuzz test asserts exactly this
-bound). Protocol-favoring rounding is applied where it belongs instead: the swap's `minOut` (the market
-requires at least the intended debt in return) and the debt/collateral accounting. Deeply underwater
-positions (`V < D`) are bad debt where no fair-value sale can raise the ratio; there the close factor is
-already 100% and the whole position is taken.
+The two properties *a step never lowers the health factor* and *rounding always favours the protocol*
+are opposed at the wei for a single no-bonus sale:
+- rounding the collateral sold **up** favours the protocol, but lowers HF;
+- rounding it **down** protects HF, but hands the borrower a sliver.
 
-## What is modeled vs. vendored
+The resolution: **HF-preservation is the headline guarantee for a step**, because self-liquidation exists
+to protect the borrower. In the operating regime (over-collateralized by value, HF between the
+liquidation threshold and 1), a step never lowers HF. The only erosion is sub-wei rounding of integer
+collateral, bounded by one indivisible collateral unit and absorbed by the value margin; the fuzz test
+asserts exactly that bound. Protocol-favouring rounding is applied where it belongs instead: the venue's
+`minOut` and the debt/collateral accounting. Deeply underwater positions are bad debt that no fair-value
+sale can repair; the close factor is already 100% there.
 
-v4-core and forge-std are vendored at pinned commits and the hook is built and tested against the real
-`PoolManager`. The Hegota devnet frame opcodes and the 1inch SwapVM/Aqua engine are **modeled** in this
-repo (`src/frame`, `src/aqua`) rather than vendored: the devnet and the sidecar are not available in
-this build environment. Every modeled assumption is isolated behind an interface (`IFrameEnv`,
-`IMakerStrategy`) and pinned in `deployments/probes.json`, so swapping in the real systems is a
-configuration and adapter change, not a rewrite. `docs/STATUS.md` tracks exactly what is proven locally
-versus what still needs the devnet.
+## Threat model
 
-## M4/M5: wiring the real devnet and SwapVM (follow-up, devnet/Hardhat-gated)
+| # | Threat | Mitigation | Where | Proof |
+| --- | --- | --- | --- | --- |
+| T1 | A stranger triggers a liquidation or bills the account | only the account may call `executeLiquidation`; `selfLiquidate` only from the account itself | `AutolysisMarket.sol`, `AutolysisAccount.sol` | `C1_execute_guard.t.sol::test_strangerCannotCallExecute`; invariants `strangerExecuteNeverBills`, the stranger-liquidation path |
+| T2 | A mutated frame tx gets approved (appended key, wrong selector, value, fee over cap, frame-0 mode, calldata) | the fixed canonical shape in VERIFY | `FirewallRules.sol` | `test/fuzz/FirewallRules.t.sol` (single-field mutation fuzz); `Adversarial.t.sol::test_keyAppendRejected`, `test_feeGriefingRejected`; `just scene attacks` |
+| T3 | Oracle spike or stale price | 10% band, two-round breaker, K = 4 VERIFY window, 1 h SENDER max age | `RoundFeed.sol` | `RoundFeed.t.sol` (`test_breakerNeedsTwoRounds`, `test_staleRejected`, …); `H1_verify_round.t.sol` |
+| T4 | Replaying a round, or retrying a failure at the same price | `lastAttemptRound` advances on success and failure; VERIFY requires a newer round | `AutolysisMarket.sol`, `AutolysisAccount.sol` | `H1::test_alreadyUsedRoundRejected`, `C2_nonce_freeze.t.sol` (`test_failedAttemptBlocksSameRoundRetry`, `test_failedAttemptDoesNotFreezePosition`) |
+| T5 | Gas drain through failing liquidations | billing ≤ `min(MAX_COST, cap)` per attempt, one attempt per round, fee cap checked in VERIFY | `AutolysisMarket.sol` | `Adversarial::test_failedAttemptBillingWithinCap`; invariant `feeBilledEqualsAccountEth` |
+| T6 | Forged `hookData` claiming a liquidation | authorization on `sender` + the venue's transient flag, never on `hookData` | `BackstopHook.sol` | `BackstopHook.t.sol::test_forgedHookDataGetsVanillaPath`, `test_outsideSwapperMatchesVanilla`; fork `test_outsideSwapperSeesNormalPool` |
+| T7 | Sandwiching the sale | tiers 1 and 2 price from the cited oracle round, not reserves; tier 3 is bounded by the venue's `minOut` | `LiquidationPricer.sol`, `BackstopHook.sol`, `V4Venue.sol` | `aqua-fork/test/OraclePricedFill.t.sol` |
+| T8 | A hostile or broken maker program in tier 1 | the gate opcode; owner-registered orders; quote gate (≥ cited price); exact approval; per-order gas cap; underpay → revert; leftover settled back | `AutolysisAquaRouterGated.sol`, `BackstopHook.sol` | `C1_SwapVMTier1.t.sol` (stranger / outside-liquidation reverts); fork `C2_OfficialAqua.t.sol` |
+| T9 | Reentrancy during the sale | the market's transient "active" flag; the hook's `nonReentrant`; caller checks in the venue | `AutolysisMarket.sol`, `BackstopHook.sol`, `V4Venue.sol` | invariant `activeFlagClear` |
+| T10 | Borrower rescue races a pending liquidation | the pending tx's VERIFY re-checks health at execution; a repaid position no longer approves | `AutolysisAccount.sol` | `Adversarial::test_rescueInvalidatesPending` |
+| T11 | The classic fallback pre-empting self-liquidation | an on-chain streak of rounds the carrier could act on, reset by any change or success, plus HF < 0.95 | `AutolysisMarket.sol` | `D1_classic.t.sol` (11 tests); invariant `classicNeverPreemptsSelfLiquidation` (non-vacuous) |
+| T12 | Insolvent positions leave debt behind | write the shortfall off as bad debt on a full sale, in both paths | `AutolysisMarket.sol` | `H3::test_badDebtWrittenOff`; invariant `noDanglingDebt` (it found the classic-path case) |
+| T13 | Conservation errors | totals = sums of positions; the token balance equals total collateral; fees billed = ETH received | `AutolysisMarket.sol` | invariants `collateralConserved`, `debtConserved`, `feeBilledEqualsAccountEth`, `usdcCoversWithdrawable` |
 
-Two pieces are written to the real interfaces but cannot be *run* in this build (no devnet; SwapVM uses
-a separate Hardhat/solc-0.8.30 toolchain):
-
-- **Probes (M4).** `kit/src/probes/` targets the real sidecar: it builds frame transactions with
-  `@forshtat/hegota-support` (`newTx`/`frame`/`encodeTx`), submits with `eth_sendFrameTransaction`
-  (`toWire`), runs read-only probes with `ethrex_simulateFrameTransaction`, and maps node rejections with
-  `explainRejection`. The eight probes settle: opcode support, the MAX_COST fee formula, staked vs
-  unstaked VERIFY reads, the first-use key cost boundary (97,919 vs 97,920), the sequence ceiling, the
-  replacement bump, solvency rejection, and reputation counters. `deployments/probes.json` carries a
-  `selectorFallback` flag: if FRAMEPARAM/FRAMEDATALOAD do not work on chain 1337 but TXPARAM does, VERIFY
-  takes `(positionId, roundId)` in its own calldata and checks `NONCE_KEY_0 == H(market,id) >> 8`, and
-  `selfLiquidate` re-checks the key with TXPARAM. The probe sources are excluded from the kit's typecheck
-  until the package is built against a devnet.
-
-- **SwapVM fork (M5/N3).** `1inch/swap-vm` @ `f9f4acf`, `1inch/aqua` @ `v1.0.2-rc.2`,
-  `1inch/solidity-utils` @ `v7.0.3` and OpenZeppelin `v5.6.1` are vendored. The real fork lives in
-  `aqua-fork/` (its own Foundry profile, solc 0.8.30, `via_ir`, OZ 5.6.1 — isolated from the main
-  project whose bundled OZ remapping would clash) under the SwapVM-1.1 license (`aqua-fork/LICENSES/`,
-  which requires modifications to stay under it). `AutolysisAquaRouterGated` forks `AquaSwapVMRouter`
-  (extends `Simulator, SwapVM, AquaOpcodes`) and overrides `_dispatch` to handle a `LiquidationGate`
-  opcode — `ctx.query.taker == hook && IGateVenue(venue).liquidationActive()` — before `_runOpcode`.
-  `FOUNDRY_PROFILE=aqua forge test` (`just aqua`) compiles it against the real SwapVM/Aqua and runs the
-  gate test (hook + active passes; stranger / inactive revert). **Remaining for the full 1inch track:**
-  makers ship their strategy into Aqua with the gate as the first instruction, the hook acts as taker,
-  and the order-hash template check (the hook rebuilds the expected program from a template plus the
-  maker's registered parameters and accepts only if `hash(order)` matches) replaces the EIP-1167 clone
-  allowlist; then run SwapVM's own suite with the opcode. This wiring crosses the 0.8.30/0.8.26 boundary
-  (a deployment concern). ### R5 progress and the exact remaining recipe
-
-Done and verified: the gated fork compiles against upstream SwapVM/Aqua; the `LiquidationGate` opcode
-(`0xf9`) is checked at `_dispatch` (hook+active passes, stranger/inactive revert, `just aqua`); and
-`src/aqua/ISwapVMRouter.sol` is the ABI-exact 0.8.26 seam the hook uses to call the 0.8.30 router across
-the solc boundary (the hook only needs the ABI; deploy the router in a 0.8.26 test with
-`vm.deployCode("aqua-fork/out/AutolysisAquaRouterGated.sol/AutolysisAquaRouterGated.json", args)`).
-
-Remaining (written up, not yet run end to end): a maker `ship`s an order whose program is the gate as
-the first instruction — a bare `hex"f900"` header passed as the `prefix` to
-`Strategies.buildXYCConcentrateOrder` (or `buildLimitOrder`), then the oracle-pricing instruction
-(`OraclePriceAdjuster` / an `Extruction` reading `venue.liquidationPrice()`), then the swap. `BackstopHook`
-tier 1 calls `ISwapVMRouter.swap` as the taker for each registered order; the order-hash template check
-(rebuild the expected program from a template + the maker's registered parameters, accept only if
-`hash(order)` matches) replaces the EIP-1167 clone allowlist. Exit test: a full liquidation moves USDC out
-of the maker's wallet and WETH into it, and a stranger calling the router directly reverts
-`LiquidationGateClosed`. This uses SwapVM's Aqua test-base order/ship encoding, so it is built in the
-`aqua` (0.8.30) profile. `src/aqua` stays as the fast-test model with the same guarantees.
+**Trust assumptions and residual risks (not mitigated by code):**
+- **Oracle updater:** a single key posts rounds. The band and breaker bound how fast it can move the
+  price, not whether it lies.
+- **Hook owner:** registers venues and tier-1 orders, and owns the house deposits.
+- **Keeper liveness:** the classic fallback only opens if someone calls `markUnhealthy`.
+- **Alt mempool behaviour:** admission, relaying and reputation rules are the sidecar's. On the devnet a
+  keyed tx sent to the manual-bundling gateway was never relayed; the miner sidecar included one in block
+  2865. EXO-010 (keeping honest carriers from being throttled by a market-wide bounce) is a proposal,
+  simulated only.
+- **Tokens on the devnet are ours** (ETH-backed WETH, mock USDC). The fork proofs use the official v4
+  PoolManager and Aqua with test tokens.
