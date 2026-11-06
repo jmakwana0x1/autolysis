@@ -216,16 +216,16 @@ canonical mempool and to the alt mempool:
 | Track | What | Where (file:line) | Proof | Label |
 | --- | --- | --- | --- | --- |
 | **EF: alt mempool** | VERIFY approves exactly one tx shape per (position, step) | `src/core/AutolysisAccount.sol:124`, `src/libraries/FirewallRules.sol:65` | `test/fuzz/FirewallRules.t.sol` (single-field mutation fuzz) | local test |
-| | fixed-size frame read (15 opcode reads), shared by devnet + mock | `src/frame/CanonicalReader.sol:18`, `src/frame/FrameTypes.sol:51`, `src/frame/HegotaFrameEnv.sol:16` | `test/scenarios/A1_verify_gas.t.sol`: 71,822 / 50,414 gas | mock only |
+| | fixed-size frame read (15 opcode reads), shared by devnet + mock | `src/frame/CanonicalReader.sol:18`, `src/frame/FrameTypes.sol:51`, `src/frame/HegotaFrameEnv.sol:16` | `test/scenarios/A1_verify_gas.t.sol`: 71,822 / 50,414 gas (mock); devnet simulate: **94,168** (outside reads) / **71,892** (storage-only) | mock only; **on devnet** (measured) |
 | | never-revert SENDER envelope, self-paid from collateral | `src/core/AutolysisAccount.sol:162`, `src/core/AutolysisMarket.sol:181` | `test/integration/Liquidation.t.sol` | local test |
 | | canonical frame-tx builder; simulate on the raw 0x06 bytes; VERIFY path choice | `kit/src/frameTx.ts:64`, `kit/src/sim.ts:43`, `kit/src/sim.ts:79` | `kit/test/probes.test.ts` | local test |
-| | Phase A in one idempotent command | `kit/src/gateA/gateA.ts:101` (`just gate-a`) | `kit/test/gateA.test.ts`; `just gate-a-local` | local test; devnet **written, not run** |
-| | Phase B scenes: crash ×12, replacement, 5 attacks, reputation | `kit/src/scenes/phaseB.ts:170`, `:225`, `:290`, `:382` | `kit/test/scenes.test.ts` | local test; devnet **written, not run** |
+| | Phase A in one idempotent command | `kit/src/gateA/gateA.ts:102` (`just gate-a`) | `kit/test/gateA.test.ts`; `just gate-a-local`; `deployments/1337.json` | **on devnet (block 2865)** |
+| | Phase B scenes: crash ×12, replacement, 5 attacks, reputation | `kit/src/scenes/phaseB.ts:173`, `:252`, `:290`, `:360`, `:452` | `kit/test/scenes.test.ts`; `deployments/1337.json` (`scenes`) | **on devnet:** crash 12/12 alt, 0/12 canonical; attacks 5/5 rejected; replacement not demonstrated |
 | | EXO-010 reputation proposal, simulated | `kit/src/sim/exo010.ts:63` | `kit/test/exo010.test.ts`; dashboard chart | local test |
 | **Uniswap v4** | three-tier backstop hook; outside swappers see a normal pool | `src/backstop/BackstopHook.sol:138`, `:179` | `test/backstop/BackstopHook.t.sol` | local test |
 | | settle-before-swap venue; cited-round price for the pricer | `src/backstop/V4Venue.sol:94`, `:67` | `test/integration/V4Liquidation.t.sol:138` | local test |
 | | full liquidation through the **official Unichain v4 PoolManager** `0x1F98…0004` | `test/fork/UniswapOfficialPoolManager.t.sol:153` (`just fork-uniswap`) | balance table above; CI `fork-unichain` | **on fork** |
-| | hook deployed on the devnet's official predeployed PoolManager `0x6bF9…9848` | `script/Deploy.s.sol:47`, `:172` | `deployments/1337.json` | **on devnet** (deployed; liquidation not yet included) |
+| | hook deployed on the devnet's official predeployed PoolManager `0x6bF9…9848` | `script/Deploy.s.sol:47`, `:172` | `deployments/1337.json` | **on devnet:** liquidation included in block 2865 through it |
 | **1inch Aqua / SwapVM** | gated router: `LiquidationGate` opcode `0xf9` | `aqua-fork/src/AutolysisAquaRouterGated.sol:46` | `aqua-fork/test/GatedAquaFill.t.sol` | local test |
 | | oracle pricer (Extruction), quote == fill | `aqua-fork/src/LiquidationPricer.sol:43` | `aqua-fork/test/OraclePricedFill.t.sol` | local test |
 | | hook tier 1 → gated router as taker, across solc 0.8.26/0.8.30 | `src/backstop/BackstopHook.sol:245`, `:264`, `src/interfaces/ISwapVMRouter.sol:14` | `test/integration/C1_SwapVMTier1.t.sol:191` | local test |
