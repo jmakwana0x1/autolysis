@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/jmakwana0x1/autolysis/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jmakwana0x1/autolysis/actions/workflows/ci.yml?query=branch%3Amain)
 
+**Pitch site:** _link coming_ <!-- TODO(PITCH_URL): replace with [Pitch site](URL) --> ·
+**Demo video:** _link coming_ <!-- TODO(DEMO_VIDEO_URL): replace with [Demo video](URL) -->
+
 **Self-liquidating lending.** A position liquidates itself: a keyless frame transaction (EIP-8141) that
 the borrower's own `AutolysisAccount` validates and pays for, carried by the alternative mempool, sells a
 slice of collateral through a Uniswap v4 pool whose hook fills from 1inch Aqua makers first, then the
