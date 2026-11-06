@@ -25,17 +25,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - name: Cache solc (0.8.26, 0.8.28, 0.8.30)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
-          path: ~/.local/share/svm
-          key: svm-0.8.26-0.8.28-0.8.30-v1
+          # forge's solc store (svm-rs): ~/.svm on some hosts, ~/.local/share/svm on others; cache both
+          path: |
+            ~/.svm
+            ~/.local/share/svm
+          key: svm-0.8.26-0.8.28-0.8.30-v2
       - uses: extractions/setup-just@v4
         with:
           just-version: ${{ env.JUST_VERSION }}
@@ -46,31 +49,49 @@ jobs:
         env:
           FOUNDRY_PROFILE: ci
         run: forge test --match-path "test/invariant/*"
-      - name: Gas report
+      # forge runs --gas-report in isolation mode (every top-level call its own tx) whatever foundry.toml says.
+      # Suites that carry transient state across calls inside one liquidation (the frame-env approvals, the
+      # Aqua gate, the venue's active flag) are only correct non-isolated, so they are excluded from the
+      # per-function report and covered by the full per-test `forge snapshot` below. pipefail: a failing
+      # test fails this step instead of being swallowed by tee.
+      - name: Gas report (per function) + gas snapshot (per test, all suites)
+        shell: bash
         env:
           FOUNDRY_PROFILE: quick
-        run: forge test --no-match-path "test/invariant/*" --gas-report | tee gas-report.txt
-      - uses: actions/upload-artifact@v4
+          ISOLATION_EXCLUDED: "test/{invariant/*,integration/Liquidation.t.sol,scenarios/{Adversarial,C2_nonce_freeze,H1_verify_round,N5_N6,A1_verify_gas,W1_storage_only_verify}.t.sol,backstop/BackstopHook.t.sol,aqua/AquaRouter.t.sol}"
+        run: |
+          set -o pipefail
+          {
+            echo "# forge test --gas-report (isolation mode). Excluded, see ci.yml: $ISOLATION_EXCLUDED"
+            forge test --no-match-path "$ISOLATION_EXCLUDED" --gas-report
+          } | tee gas-report.txt
+          forge snapshot --no-match-path "test/invariant/*" --snap gas-snapshot.txt
+      - uses: actions/upload-artifact@v6
         with:
           name: gas-report
-          path: gas-report.txt
+          path: |
+            gas-report.txt
+            gas-snapshot.txt
 
   aqua:
     name: aqua (SwapVM/Aqua fork, solc 0.8.30)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - name: Cache solc (0.8.26, 0.8.28, 0.8.30)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
-          path: ~/.local/share/svm
-          key: svm-0.8.26-0.8.28-0.8.30-v1
+          # forge's solc store (svm-rs): ~/.svm on some hosts, ~/.local/share/svm on others; cache both
+          path: |
+            ~/.svm
+            ~/.local/share/svm
+          key: svm-0.8.26-0.8.28-0.8.30-v2
       - uses: extractions/setup-just@v4
         with:
           just-version: ${{ env.JUST_VERSION }}
@@ -81,15 +102,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Cache node_modules
         id: nm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             lib/hegota-support/node_modules
@@ -123,7 +144,7 @@ jobs:
       UNICHAIN_RPC_URL: ${{ secrets.UNICHAIN_RPC_URL || 'https://mainnet.unichain.org' }}
       UNICHAIN_FORK_BLOCK: "63190327"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
@@ -133,10 +154,13 @@ jobs:
           cache-key: foundry-rpc-unichain-63190327
           cache-restore-keys: foundry-rpc-unichain-
       - name: Cache solc (0.8.26, 0.8.28, 0.8.30)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
-          path: ~/.local/share/svm
-          key: svm-0.8.26-0.8.28-0.8.30-v1
+          # forge's solc store (svm-rs): ~/.svm on some hosts, ~/.local/share/svm on others; cache both
+          path: |
+            ~/.svm
+            ~/.local/share/svm
+          key: svm-0.8.26-0.8.28-0.8.30-v2
       - uses: extractions/setup-just@v4
         with:
           just-version: ${{ env.JUST_VERSION }}
@@ -144,7 +168,7 @@ jobs:
         run: just aqua-build
       - name: C2 on the fork (one retry on rate limit; outcome in the job summary)
         run: ./scripts/ci/fork-c2.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: c2-fork-trace
