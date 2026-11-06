@@ -41,6 +41,15 @@ fuzz-deep:
 quick:
     FOUNDRY_PROFILE=quick forge test
 
+# Phase A on the devnet in one unattended, idempotent run: deploy, stake, simulate both VERIFY paths and
+# choose, canonical attempt, first liquidation. Records everything in deployments/1337.json.
+gate-a:
+    cd kit && CHAIN_ID=1337 npx tsx src/gateA/run.ts
+
+# gate-a against anvil + a MOCK frame node (frame RPCs canned / SENDER frame emulated), run twice
+gate-a-local:
+    ./kit/scripts/gate-a-local.sh
+
 # Layer 0: devnet probes (needs RPC_URL and PROBE_PK); writes deployments/probes.json
 probe:
     cd kit && npm run --silent probe
@@ -57,7 +66,7 @@ e2e:
 sim:
     cd kit && node scripts/gen-exo010-chart.mjs
 
-# Redeploy and seed everything on the devnet (target: < 3 minutes)
+# Redeploy and seed everything on a local anvil (writes deployments/<chainid>.addresses.json)
 reset:
     forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_URL --broadcast --slow --private-key $PRIVATE_KEY
     cd kit && npm run --silent seed

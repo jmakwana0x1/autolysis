@@ -90,11 +90,8 @@ contract Deploy is Script {
         A.market = address(new AutolysisMarket(IERC20(A.weth), IERC20(A.usdc), IRoundFeed(A.feed), A.account));
         AutolysisAccount(payable(A.account)).initialize(AutolysisMarket(payable(A.market)), 0.02e18);
 
-        // On the Hegota sidecar, VERIFY has only MAX_VERIFY_GAS = 100,000 (no 1M staked allowance), and
-        // the staked-read VERIFY path measures ~131k. So enable the storage-only VERIFY path (W1.5),
-        // which reads the round/health gate from the account's own storage and fits under the cap
-        // (~98.6k). Off by default (the staked-read path is correct on a full ERC-8421 node); set
-        // STORAGE_ONLY_VERIFY=true for the devnet. See docs/DEVNET.md.
+        // VERIFY path: outside reads by default; STORAGE_ONLY_VERIFY=true selects the W1.5 snapshot path.
+        // `just gate-a` measures both on the devnet (A4) and sets the chosen one (A5). See docs/DEVNET.md.
         if (vm.envOr("STORAGE_ONLY_VERIFY", false)) {
             AutolysisAccount(payable(A.account)).setStorageOnlyVerify(true);
         }
@@ -214,6 +211,11 @@ contract Deploy is Script {
         vm.serializeAddress(o, "PoolModifyLiquidityTest", a.liquidityRouter);
         vm.serializeAddress(o, "StakingRegistry", a.stakingRegistry);
         string memory json = vm.serializeAddress(o, "ProbeOpcodes", a.probeOpcodes);
-        vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
+        // Addresses only; `just gate-a` merges them into deployments/<chainid>.json (which also holds the
+        // run's hashes, gas numbers and balances), so a redeploy never clobbers that record.
+        string memory out = vm.envOr(
+            "DEPLOY_OUT", string.concat("deployments/", vm.toString(block.chainid), ".addresses.json")
+        );
+        vm.writeJson(json, out);
     }
 }

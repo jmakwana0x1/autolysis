@@ -63,10 +63,11 @@ contract R2StakingTest is Test {
     function test_accountStakesItself() public {
         vm.deal(address(this), 2 ether);
         account.stake{value: 1 ether}(86_400);
-        (uint256 stake, bool staked, uint32 delay) = registry.getDepositInfo(address(account));
+        (uint256 stake, uint32 delay, uint64 withdrawTime) = registry.getDepositInfo(address(account));
         assertEq(stake, 1 ether, "stake recorded against the account");
-        assertTrue(staked, "account should count as staked");
+        assertTrue(registry.isStaked(address(account)), "account should count as staked");
         assertEq(delay, 86_400);
+        assertEq(withdrawTime, 0, "no withdrawal in progress");
     }
 
     function test_verifyFitsStakedGasLimit() public {

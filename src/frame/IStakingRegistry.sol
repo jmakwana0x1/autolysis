@@ -2,12 +2,11 @@
 pragma solidity ^0.8.26;
 
 /// @title IStakingRegistry
-/// @notice The ERC-8421 staking registry (EntryPoint-style). A sender stakes itself by calling
-///         `addStake` with value and an unstake delay; it counts as STAKED once its stake is at least
-///         MIN_STAKE_VALUE and the delay is at least 86,400s. A staked sender gets ~1,000,000 validation
-///         gas (vs 100,000) and read-only access to outside contracts in VERIFY (STORAGE-032). The
-///         registry address on chain 1337 and MIN_STAKE_VALUE are devnet constants (to be confirmed with
-///         the sidecar maintainer); it is read from deployments/1337.json.
+/// @notice The ERC-8421 staking registry, ABI-exact with the devnet's `NaiveStakingRegistry`
+///         (lib/mempool-workshop-sidecar/deploy/predeploy/src/contracts/NaiveStakingRegistry.sol) at
+///         0xd51c…2d2f. A sender stakes itself with `addStake`; the sidecar counts it as staked when
+///         stake >= 0.01 ETH, delay >= 86,400 s and no withdrawal is in progress (withdrawTime == 0,
+///         STAKING-010). On this sidecar staking lifts storage-access limits; MAX_VERIFY_GAS stays 100k.
 interface IStakingRegistry {
     /// @notice Stake `msg.value`, locking it behind `unstakeDelaySec`. Called by the entity itself.
     function addStake(uint32 unstakeDelaySec) external payable;
@@ -18,6 +17,9 @@ interface IStakingRegistry {
     /// @notice Withdraw the unlocked stake to `recipient`.
     function withdrawStake(address payable recipient) external;
 
-    /// @notice Stake info for `account`: amount staked, whether it is locked (staked), and the delay.
-    function getDepositInfo(address account) external view returns (uint256 stake, bool staked, uint32 unstakeDelaySec);
+    /// @notice Stake info for `account`. `withdrawTime != 0` means a withdrawal began (not staked).
+    function getDepositInfo(address account)
+        external
+        view
+        returns (uint256 stake, uint32 unstakeDelaySec, uint64 withdrawTime);
 }

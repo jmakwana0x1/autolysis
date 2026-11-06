@@ -9,3 +9,5 @@ kit/dist/
 app/dist/
 simulator/out/
 deployments/31337.json
+deployments/*.addresses.json
+!deployments/1337.addresses.json

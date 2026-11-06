@@ -33,8 +33,16 @@ endpoints above serve chain 1337. The gateway faucet there answered `The faucet 
 - **Status/receipts:** `skandha_frameTransactionStatus(hash)`, `eth_getFrameTransactionReceipt(hash)`
   (per-frame status + logs), ethrex `eth_getTransactionReceipt`.
 - **Dry run / the probe tool:** `ethrex_simulateFrameTransaction([rawTx, "latest", {trace:true}])` on the
-  **root** URL → `valid`, `violation`, `maxCost`, `payer`, `frames[{gasUsed, succeeded}]`, `erc7562Trace`.
-  `maxCost` settles the fee-format question directly.
+  **root** URL, where `rawTx` is the **raw `0x06 || rlp` bytes** (not the JSON wire form): sidecar
+  `FrameTxSimulationService/index.ts:60-63`, `GethTracer.ts:33-45`. Result type
+  `EthrexSimulateFrameTransactionResult` (`packages/types/.../ethrexFrameTx.ts:123`): `canonicalMempoolValid`,
+  `canonicalMempoolViolation`, `maxCost`, `payer`, `gasUsed`, `frames[{gasUsed (hex), succeeded}]`,
+  `executionStatus`, `executionError`, `failedFrameIndex`/`haltReason`/`haltDetail`/`revertData`,
+  `erc7562Trace`. **`canonicalMempoolValid` is ethrex's canonical verdict, not the alt mempool's**; the alt
+  verdict only comes from `eth_sendFrameTransaction`. (Earlier kit code sent the wire JSON and read
+  `valid`/`violation`; fixed in `kit/src/sim.ts`.)
+- **Receipts:** the workshop reads frame receipts with `eth_getTransactionReceipt` through the gateway and
+  checks `status` plus every `frameReceipts[i].status == 0x1` (`lib/mempool-workshop/src/lib/frameTx/send.ts`).
 - **Gas estimate:** `eth_estimateFrameTransactionGas([partialTx])` on `/rpc`.
 
 ## Signatures (answers REVIEW-3 R4)
@@ -95,6 +103,14 @@ costs differ; the authoritative number per demo is `frames[0].gasUsed` from
 3. keep only shape, key, unhealthy-at-cited-round, fee cap, scope — leave the rest to
    `executeLiquidation`'s recheck;
 4. last resort: the community solc fork (`chiranjeev13/solidity` v0.8.38-eip8141.0, inline opcodes).
+
+### Keyed txs and the pending limit
+
+Per the sidecar's own CLAUDE.md (MempoolService): keyed (EIP-8250) txs are **exempt** from the sender's
+per-entity caps, each `(sender, nonce key)` holds at most one pending tx (`checkNonceKeyConflict`), and
+pending gas must stay within the **payer's balance** (`obligations.ts`). So the 12-position crash needs the
+account to hold >= 12 x maxCost; the stake is still needed for outside reads (STO rules). Confirm the cap
+exemption live in B1 before relying on it.
 
 ### Per-sender pending limit = 4
 

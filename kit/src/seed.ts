@@ -34,7 +34,7 @@ async function main() {
   const pub = createPublicClient({ transport: http(RPC) });
   const chainId = await pub.getChainId();
   const chain = defineChain({ id: chainId, name: "local", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [RPC] } } });
-  const d: Record<string, Address> = JSON.parse(readFileSync(join(ROOT, "deployments", `${chainId}.json`), "utf8"));
+  const d: Record<string, Address> = JSON.parse(readFileSync(join(ROOT, "deployments", `${chainId}.addresses.json`), "utf8"));
   const deployer = privateKeyToAccount(KEYS[0]);
   const w = (k: `0x${string}`) => createWalletClient({ account: privateKeyToAccount(k), chain, transport: http(RPC) });
 

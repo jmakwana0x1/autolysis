@@ -56,6 +56,7 @@ export type CanonicalParams = {
   verifyGas: bigint;
   verifyStateLimit: bigint;
   executeGas: bigint;
+  executeStateLimit?: bigint; // state gas for the SENDER frame (liquidation writes new slots)
   signatureForm?: SignatureForm;
 };
 
@@ -77,6 +78,7 @@ export function canonicalLiquidationTx(p: CanonicalParams): FrameTx {
       }),
       frame(profile, "SENDER", {
         execution: p.executeGas,
+        state: p.executeStateLimit ?? 0n,
         data: encodeFunctionData({ abi: accountAbi, functionName: "selfLiquidate", args: [p.positionId, p.roundId] }),
       }),
     ],

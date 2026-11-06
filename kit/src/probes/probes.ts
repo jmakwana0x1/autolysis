@@ -4,8 +4,9 @@
 // classified with `explainRejection`. Requires the devnet; not exercised in CI (no devnet here), but
 // typechecked against the built @forshtat/hegota-support package.
 import { profile } from "@forshtat/hegota-support/profiles/ethrex-eip8141-tracer";
-import { frame, newTx, encodeTx, secp256k1Placeholder } from "@forshtat/hegota-support/tx";
-import { toWire, explainRejection } from "@forshtat/hegota-support/rpc";
+import { frame, newTx, secp256k1Placeholder } from "@forshtat/hegota-support/tx";
+import { explainRejection } from "@forshtat/hegota-support/rpc";
+import { simulate as simulateRaw, type EthrexSimResult } from "../sim.js";
 import type { Probes } from "../registry.js";
 
 // Injected so tests can mock the node. Mirrors rpc(url, method, params).
@@ -39,19 +40,13 @@ function verifyFrameTx(to: `0x${string}`, data: `0x${string}`) {
   });
 }
 
-// ethrex_simulateFrameTransaction([rawTx, "latest", {trace:true}]) on the ethrex ROOT url (not /rpc).
-// Returns { valid, violation, maxCost, payer, frames:[{gasUsed, succeeded}], erc7562Trace }. See
-// docs/DEVNET.md (forshtat/mempool-workshop-sidecar @ 2e22ff0).
-type SimFrame = { gasUsed?: number | string; succeeded?: boolean };
-type SimResult = { valid?: boolean; violation?: string | null; maxCost?: string; payer?: string; frames?: SimFrame[] };
+// ethrex_simulateFrameTransaction([rawTx, "latest", {trace:true}]) on the ethrex ROOT url (not /rpc), with
+// the RAW 0x06 encoding (see kit/src/sim.ts for the vendored-source citations and the result type).
+type SimResult = EthrexSimResult;
 
 async function simulate(ctx: ProbeCtx, to: `0x${string}`, data: `0x${string}`): Promise<SimResult> {
   const call = ctx.simCall ?? ctx.call; // simulate runs against the ethrex root, not the gateway
-  return (await call("ethrex_simulateFrameTransaction", [
-    toWire(verifyFrameTx(to, data)),
-    "latest",
-    { trace: true },
-  ])) as SimResult;
+  return simulateRaw(call, verifyFrameTx(to, data));
 }
 
 function asGas(v: number | string | undefined): number {
@@ -114,12 +109,13 @@ export const probes: Probe[] = [
       // the forshtat sidecar the storage-only VERIFY path reads no outside contract, so this probe is
       // about whether the STAKED-read design is admitted at all; our shipping path avoids it.
       const res = await simulate(ctx, ctx.account, "0x3ad51b8d"); // verifyLiquidation()
-      if (res.valid === true && !res.violation) {
+      if (res.canonicalMempoolValid === true && !res.canonicalMempoolViolation && res.frames?.[0]?.succeeded) {
         ctx.probes.stakedExternalReads = true;
       } else {
-        const r = explainRejection(res.violation ?? "");
+        const v = res.canonicalMempoolViolation ?? res.haltDetail ?? "";
+        const r = explainRejection(v);
         ctx.probes.stakedExternalReads = false;
-        throw new Error(`VERIFY external read not admitted (violation: ${res.violation ?? "?"}; rule ${r.rule ?? "?"})`);
+        throw new Error(`VERIFY external read not admitted (violation: ${v || "?"}; rule ${r.rule ?? "?"})`);
       }
       return ctx.probes.stakedExternalReads;
     },

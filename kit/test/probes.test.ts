@@ -11,23 +11,36 @@ function ctx(call: ProbeCtx["call"], extra: Partial<ProbeCtx> = {}): ProbeCtx {
 describe("devnet probes", () => {
   it("opcode support: confirmed only when every frame reports success", async () => {
     // Real sidecar simulate shape: frames:[{ gasUsed, succeeded }] (docs/DEVNET.md).
-    const c = ctx(async () => ({ valid: true, frames: [{ succeeded: true, gasUsed: 50_000 }] }));
+    const c = ctx(async () => ({ canonicalMempoolValid: true, frames: [{ succeeded: true, gasUsed: "0xc350" }] }));
     await probes[0].run(c);
     expect(Object.values(c.probes.opcodes).every((o) => o.works === true)).toBe(true);
     expect(c.probes.rawSimulateResponse).toBeDefined(); // raw response recorded on first run
   });
 
   it("opcode support: a non-success frame leaves it unconfirmed (throws, opcodes stay null)", async () => {
-    const c = ctx(async () => ({ valid: false, frames: [{ succeeded: false, gasUsed: 50_000 }] }));
+    const c = ctx(async () => ({ canonicalMempoolValid: false, frames: [{ succeeded: false, gasUsed: "0xc350" }] }));
     await expect(probes[0].run(c)).rejects.toThrow();
     expect(Object.values(c.probes.opcodes).every((o) => o.works === null)).toBe(true);
   });
 
+  it("simulate sends the RAW 0x06 tx, not the JSON wire form", async () => {
+    let params: unknown[] = [];
+    const c = ctx(async (_m, p) => {
+      params = p ?? [];
+      return { canonicalMempoolValid: true, frames: [{ succeeded: true, gasUsed: "0x1" }] };
+    });
+    await probes[0].run(c);
+    expect(typeof params[0]).toBe("string");
+    expect((params[0] as string).startsWith("0x06")).toBe(true);
+    expect(params[1]).toBe("latest");
+    expect(params[2]).toEqual({ trace: true });
+  });
+
   it("verify gas: passes under the cap, fails over it", async () => {
-    const under = ctx(async () => ({ valid: true, frames: [{ succeeded: true, gasUsed: 98_581 }] }));
+    const under = ctx(async () => ({ canonicalMempoolValid: true, frames: [{ succeeded: true, gasUsed: "0x18115" }] }));
     await probes[3].run(under);
     expect(under.probes.verifyGas).toBe(98_581);
-    const over = ctx(async () => ({ valid: true, frames: [{ succeeded: true, gasUsed: 131_589 }] }));
+    const over = ctx(async () => ({ canonicalMempoolValid: true, frames: [{ succeeded: true, gasUsed: "0x20205" }] }));
     await expect(probes[3].run(over)).rejects.toThrow();
   });
 
