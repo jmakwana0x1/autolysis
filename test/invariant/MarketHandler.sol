@@ -34,6 +34,17 @@ contract MarketHandler is Test {
     uint256 public verifyReverted;
     uint256 public strangerExecuteBilled; // must stay 0 (C1)
 
+    // D1 ghosts. ghostRun[id] = consecutive posted rounds the position was unhealthy at that round's price,
+    // with no position change and no successful self-liquidation since: the rounds the carrier COULD have
+    // liquidated at and did not. Independent of the market's own streak bookkeeping.
+    mapping(uint256 => uint256) public ghostRun;
+    uint256 public classicFired;
+    uint256 public starveOpportunities; // starves with a real position and a non-degenerate price
+    uint256 public starveMissed; // such starves where the fallback did NOT fire (must stay 0)
+    uint256 public classicFiredEarly; // fired with ghostRun < 3: while self-liquidation was still possible (must stay 0)
+    uint256 public classicFiredAboveThreshold; // fired with HF >= 0.95 (must stay 0)
+    address constant LENDER = address(0x1E4D);
+
     address constant ALICE = address(0xA11CE);
     address constant STRANGER = address(0x5748);
 
@@ -81,6 +92,7 @@ contract MarketHandler is Test {
         col.approve(address(market), type(uint256).max);
         market.deposit(id, amt);
         vm.stopPrank();
+        ghostRun[id] = 0;
     }
 
     function repay(uint256 seed, uint256 amt) public {
@@ -94,6 +106,7 @@ contract MarketHandler is Test {
         usdc.approve(address(market), type(uint256).max);
         market.repay(id, amt);
         vm.stopPrank();
+        ghostRun[id] = 0;
     }
 
     function refillTank(uint256 seed, uint256 amt) public {
@@ -112,7 +125,66 @@ contract MarketHandler is Test {
         // stay within band so rounds are usable; occasionally drift down to trigger liquidations
         p = bound(p, cur * 91 / 100, cur * 109 / 100);
         if (p == 0) p = 1;
+        _post(p);
+    }
+
+    /// Every round goes through here so the D1 ghost sees it.
+    function _post(uint256 p) internal {
         feed.post(p);
+        for (uint256 i; i < posIds.length; ++i) {
+            uint256 id = posIds[i];
+            if (market.healthFactor(id) < 1e18) ghostRun[id] += 1;
+            else ghostRun[id] = 0;
+        }
+    }
+
+    /// Keeper poke for the classic grace window.
+    function markUnhealthy(uint256 seed) public {
+        uint256 id = _pos(seed);
+        if (id == 0) return;
+        try market.markUnhealthy(id) {} catch {}
+    }
+
+    /// A stranger tries the classic fallback (it must only succeed when the carrier had 3 rounds).
+    function classicByStranger(uint256 seed, uint256 amt) public {
+        uint256 id = _pos(seed);
+        if (id == 0) return;
+        uint256 run = ghostRun[id];
+        uint256 hf = market.healthFactor(id);
+        amt = bound(amt, 1, 1e24);
+        usdc.mint(LENDER, amt);
+        vm.startPrank(LENDER);
+        usdc.approve(address(market), type(uint256).max);
+        try market.classicLiquidate(id, amt) {
+            classicFired++;
+            if (run < 3) classicFiredEarly++;
+            if (hf >= 0.95e18) classicFiredAboveThreshold++;
+            ghostRun[id] = 0;
+        } catch {}
+        vm.stopPrank();
+    }
+
+    /// The carrier is offline: open a fresh position, then six in-band down-rounds marked each round with
+    /// no self-liquidation, then the lender tries the fallback. Counts as an opportunity only when the run
+    /// is not degenerate (the position has debt and the price has not collapsed toward zero).
+    function starveCarrier(uint256 seed) public {
+        openAndFund(100e18, seed);
+        uint256 id = posIds[posIds.length - 1];
+        (,, uint256 debt,) = market.positions(id);
+        bool real = debt > 0 && feed.getRound(feed.latestRound()).price >= 1e16;
+        for (uint256 k; k < 6; ++k) {
+            uint256 cur = feed.getRound(feed.latestRound()).price;
+            uint256 next = cur * 92 / 100;
+            if (next == 0) next = 1;
+            _post(next);
+            try market.markUnhealthy(id) {} catch {}
+        }
+        uint256 before = classicFired;
+        classicByStranger(posIds.length - 1, 1e24); // seed indexes the fresh position; repay at the cap
+        if (real) {
+            starveOpportunities++;
+            if (classicFired == before) starveMissed++;
+        }
     }
 
     function liquidateViaAccount(uint256 seed) public {
@@ -130,7 +202,10 @@ contract MarketHandler is Test {
             uint256 before = market.liquidationCount(id);
             vm.prank(address(account));
             account.selfLiquidate(id, roundId);
-            if (market.liquidationCount(id) > before) successfulSteps++;
+            if (market.liquidationCount(id) > before) {
+                successfulSteps++;
+                ghostRun[id] = 0;
+            }
         } catch {
             verifyReverted++;
         }
@@ -149,7 +224,7 @@ contract MarketHandler is Test {
             uint256 cur = feed.getRound(feed.latestRound()).price;
             uint256 next = cur * (10_000 - dropBps) / 10_000;
             if (next == 0) next = 1;
-            feed.post(next);
+            _post(next);
             if (cur == 1) break; // price floored; can't drop further
         }
         if (market.healthFactor(id) >= 1e18) return;
@@ -163,7 +238,10 @@ contract MarketHandler is Test {
         try account.verifyLiquidation() {
             vm.prank(address(account));
             account.selfLiquidate(id, roundId);
-            if (market.liquidationCount(id) > before) successfulSteps++;
+            if (market.liquidationCount(id) > before) {
+                successfulSteps++;
+                ghostRun[id] = 0;
+            }
         } catch {
             verifyReverted++;
         }

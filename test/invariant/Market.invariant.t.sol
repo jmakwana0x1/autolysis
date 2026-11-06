@@ -47,7 +47,7 @@ contract MarketInvariantTest is Test {
         feed.transferUpdater(address(handler)); // handler drives price updates
         targetContract(address(handler));
 
-        bytes4[] memory sel = new bytes4[](9);
+        bytes4[] memory sel = new bytes4[](12);
         sel[0] = handler.openAndFund.selector;
         sel[1] = handler.deposit.selector;
         sel[2] = handler.repay.selector;
@@ -57,6 +57,9 @@ contract MarketInvariantTest is Test {
         sel[6] = handler.strangerLiquidates.selector;
         sel[7] = handler.crashAndLiquidate.selector;
         sel[8] = handler.strangerExecutes.selector;
+        sel[9] = handler.markUnhealthy.selector;
+        sel[10] = handler.classicByStranger.selector;
+        sel[11] = handler.starveCarrier.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: sel}));
     }
 
@@ -85,6 +88,14 @@ contract MarketInvariantTest is Test {
     }
 
     /// The "liquidation active" flag is never set outside a liquidation call.
+    /// D1: the classic fallback never fires while self-liquidation is still possible, i.e. unless the
+    /// position was self-liquidatable for 3 consecutive rounds without a successful self-liquidation or
+    /// any change to it, and never at HF >= 0.95.
+    function invariant_classicNeverPreemptsSelfLiquidation() public view {
+        assertEq(handler.classicFiredEarly(), 0, "classic fired while self-liquidation was possible");
+        assertEq(handler.classicFiredAboveThreshold(), 0, "classic fired at HF >= 0.95");
+    }
+
     function invariant_activeFlagClear() public view {
         assertFalse(market.liquidationActive(), "active flag stuck");
     }
@@ -132,5 +143,11 @@ contract MarketInvariantTest is Test {
         emit log_named_uint("successfulSteps", handler.successfulSteps());
         assertGt(handler.successfulSteps(), 0, "no liquidations exercised");
         assertGt(handler.strangerLiquidationReverts(), 0, "stranger liquidation path not exercised");
+        // D1 non-vacuity: every real starve opportunity (carrier offline for 6 marked rounds) must open the
+        // fallback, so the "never preempts" invariant is checked against firings, not an idle path.
+        emit log_named_uint("classicFired", handler.classicFired());
+        emit log_named_uint("starveOpportunities", handler.starveOpportunities());
+        assertEq(handler.starveMissed(), 0, "a starved carrier did not open the fallback");
+        if (handler.starveOpportunities() > 0) assertGt(handler.classicFired(), 0, "classic never fired");
     }
 }

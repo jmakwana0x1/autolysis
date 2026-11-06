@@ -43,7 +43,22 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     uint256 public liqThreshold = 0.8e18; // L (WAD)
     uint256 public targetHf = 1.05e18; // T (WAD)
     uint256 public slippage = 0.01e18; // s: assumed sale haircut the step prices against (WAD)
-    uint256 public constant CLASSIC_THRESHOLD = 0.95e18; // for the classic-market comparison
+    uint256 public constant CLASSIC_THRESHOLD = 0.95e18; // D1: lender fallback opens below this HF
+
+    // D1 lender fallback (classicLiquidate). Opens to ANYONE only when the position has been unhealthy for
+    // CLASSIC_GRACE_ROUNDS consecutive rounds with no successful self-liquidation and no change to the
+    // position, and HF is below CLASSIC_THRESHOLD. The streak is counted on chain by `markUnhealthy`
+    // (a keeper poke, once per round), so it records what the carrier could actually see at each round.
+    uint256 public constant CLASSIC_GRACE_ROUNDS = 3;
+    uint256 public constant CLASSIC_BONUS_BPS = 500; // 5% collateral bonus to the classic liquidator
+    uint256 public constant CLASSIC_CLOSE_FACTOR_BPS = 5000; // at most 50% of the debt per call
+
+    struct ClassicWatch {
+        uint128 lastMarkedRound; // the round the streak was last extended at
+        uint128 streak; // consecutive marked rounds the position was unhealthy, unchanged, not self-liquidated
+    }
+
+    mapping(uint256 => ClassicWatch) public classicWatch;
 
     uint256 public nextPositionId = 1;
     mapping(uint256 => Position) public positions;
@@ -53,6 +68,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     uint256 public totalCollateral; // sum of position collateral (accounting invariant anchor)
     uint256 public totalDebt; // sum of position debt
     uint256 public totalSoldOut; // collateral that left via liquidation sales
+    uint256 public totalClassicOut; // collateral that left via the D1 classic fallback
 
     // Transient "liquidation active" flag (EIP-1153). Never set outside executeLiquidation.
     bytes32 internal constant ACTIVE_SLOT = keccak256("autolysis.liquidation.active");
@@ -62,6 +78,8 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     error NotPositionOwner();
     error Healthy();
     error ReentrantLiquidation();
+    error ClassicClosed();
+    error NothingToRepay();
 
     event Opened(uint256 indexed id, address indexed owner);
     event Borrowed(uint256 indexed id, uint256 amount);
@@ -70,6 +88,10 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
     event Withdrawn(uint256 indexed id, uint256 amount);
     event Liquidated(uint256 indexed id, uint256 roundId, uint256 debtRepaid, uint256 collateralSold, uint256 fee);
     event BadDebt(uint256 indexed id, uint256 amount);
+    event UnhealthyMarked(uint256 indexed id, uint256 roundId, uint256 streak);
+    event ClassicLiquidated(
+        uint256 indexed id, uint256 roundId, address indexed liquidator, uint256 debtRepaid, uint256 collateralOut
+    );
     event SurplusWithdrawn(address indexed who, uint256 amount);
 
     constructor(IERC20 collateral_, IERC20 debt_, IRoundFeed feed_, address account_) {
@@ -113,6 +135,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         collateralToken.transferFrom(msg.sender, address(this), amount);
         pos.collateral += amount;
         totalCollateral += amount;
+        delete classicWatch[id];
         emit Deposited(id, amount);
     }
 
@@ -121,6 +144,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         if (pos.owner != msg.sender) revert NotPositionOwner();
         pos.collateral -= amount;
         totalCollateral -= amount;
+        delete classicWatch[id];
         // Must remain healthy after withdrawal.
         require(_hf(pos) >= WAD, "would be unhealthy");
         collateralToken.transfer(msg.sender, amount);
@@ -132,6 +156,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         if (pos.owner != msg.sender) revert NotPositionOwner();
         pos.debt += amount;
         totalDebt += amount;
+        delete classicWatch[id];
         require(_hf(pos) >= WAD, "would be unhealthy");
         debtToken.transfer(msg.sender, amount);
         emit Borrowed(id, amount);
@@ -144,6 +169,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         debtToken.transferFrom(msg.sender, address(this), amount);
         pos.debt -= amount;
         totalDebt -= amount;
+        delete classicWatch[id];
         emit Repaid(id, amount);
     }
 
@@ -184,6 +210,7 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         totalDebt -= cleared;
         totalSoldOut += step.collateralToSell;
         pos.liquidations += 1;
+        delete classicWatch[positionId]; // a successful self-liquidation restarts the classic grace window
         if (roundId > lastLiquidatedRound[positionId]) lastLiquidatedRound[positionId] = roundId;
         if (roundId > lastAttemptRound[positionId]) lastAttemptRound[positionId] = roundId;
 
@@ -220,6 +247,72 @@ contract AutolysisMarket is ISelfLiquidatingMarket {
         if (msg.sender != account) revert NotAccount();
         if (roundId > lastAttemptRound[positionId]) lastAttemptRound[positionId] = roundId;
         _billFeeFromCollateral(positionId, _min(cap, maxFailedGasBill));
+    }
+
+    // --- D1: classic lender fallback ---
+
+    /// @notice Keeper poke: record that position `id` is unhealthy at the latest round. Extends the streak
+    ///         when the previous mark was the previous round, else restarts it at 1. Once per round.
+    function markUnhealthy(uint256 id) external returns (uint256 streak) {
+        Position storage pos = positions[id];
+        uint256 r = feed.latestRound();
+        uint256 price = feed.priceForLiquidation(r); // a round the carrier could liquidate at
+        if (LiquidationMath.healthFactor(pos.collateral, price, liqThreshold, pos.debt) >= WAD) revert Healthy();
+        ClassicWatch storage w = classicWatch[id];
+        if (w.lastMarkedRound == r) return w.streak;
+        w.streak = (w.streak > 0 && w.lastMarkedRound + 1 == r) ? w.streak + 1 : 1;
+        w.lastMarkedRound = uint128(r);
+        emit UnhealthyMarked(id, r, w.streak);
+        return w.streak;
+    }
+
+    /// @notice Whether the classic fallback is open for `id` at the latest round.
+    function classicOpen(uint256 id) public view returns (bool) {
+        ClassicWatch storage w = classicWatch[id];
+        uint256 r = feed.latestRound();
+        if (w.lastMarkedRound != r || w.streak < CLASSIC_GRACE_ROUNDS) return false;
+        return _hf(positions[id]) < CLASSIC_THRESHOLD;
+    }
+
+    /// @notice D1 lender fallback: once open, anyone repays up to CLASSIC_CLOSE_FACTOR_BPS of the debt and
+    ///         receives collateral worth the repayment plus CLASSIC_BONUS_BPS at the latest round's price.
+    ///         Capped by the position's collateral (the repayment shrinks to match). Not a sale: no venue.
+    function classicLiquidate(uint256 id, uint256 repayAmount) external returns (uint256 debtRepaid, uint256 collateralOut) {
+        if (_active()) revert ReentrantLiquidation();
+        if (!classicOpen(id)) revert ClassicClosed();
+        _setActive(true);
+        uint256 r = feed.latestRound();
+        uint256 price = feed.priceForLiquidation(r);
+        Position storage pos = positions[id];
+
+        uint256 maxRepay = pos.debt * CLASSIC_CLOSE_FACTOR_BPS / 10_000;
+        debtRepaid = repayAmount < maxRepay ? repayAmount : maxRepay;
+        collateralOut = debtRepaid * (10_000 + CLASSIC_BONUS_BPS) * WAD / (price * 10_000);
+        if (collateralOut > pos.collateral) {
+            collateralOut = pos.collateral;
+            debtRepaid = collateralOut * price * 10_000 / ((10_000 + CLASSIC_BONUS_BPS) * WAD);
+        }
+        if (debtRepaid == 0 || collateralOut == 0) revert NothingToRepay();
+
+        debtToken.transferFrom(msg.sender, address(this), debtRepaid);
+        pos.debt -= debtRepaid;
+        totalDebt -= debtRepaid;
+        pos.collateral -= collateralOut;
+        totalCollateral -= collateralOut;
+        totalClassicOut += collateralOut;
+        delete classicWatch[id];
+        // Took the last of the collateral but debt remains: write the shortfall off against depositors,
+        // exactly as a self-liquidation that sells the whole position does (H3), so no debt is left
+        // against zero collateral.
+        if (pos.collateral == 0 && pos.debt > 0) {
+            badDebt += pos.debt;
+            totalDebt -= pos.debt;
+            emit BadDebt(id, pos.debt);
+            pos.debt = 0;
+        }
+        collateralToken.transfer(msg.sender, collateralOut);
+        _setActive(false);
+        emit ClassicLiquidated(id, r, msg.sender, debtRepaid, collateralOut);
     }
 
     /// @notice Withdraw liquidation surplus credited to the caller.

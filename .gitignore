@@ -11,3 +11,4 @@ simulator/out/
 deployments/31337.json
 deployments/*.addresses.json
 !deployments/1337.addresses.json
+deployments/uniswap-balances-31337.md
