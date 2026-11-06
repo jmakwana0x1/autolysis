@@ -20,6 +20,7 @@ import {FirewallRules} from "../../src/libraries/FirewallRules.sol";
 import {TxView, FrameView, FrameTypes} from "../../src/frame/FrameTypes.sol";
 import {ProbeConstants} from "../../src/generated/ProbeConstants.sol";
 import {MockFrameEnv} from "../mocks/MockFrameEnv.sol";
+import {BalanceTable} from "../utils/BalanceTable.sol";
 
 interface IAquaShip is IAquaBalances {
     function ship(address app, bytes calldata strategy, address[] calldata tokens, uint256[] calldata amounts)
@@ -81,10 +82,15 @@ abstract contract SwapVMTier1Base is Test, Deployers {
     /// Runs before anything is deployed (C2 selects the fork here).
     function _beforeSetUp() internal virtual {}
 
-    function setUp() public {
-        _beforeSetUp();
+    /// Which PoolManager and tokens. C1: a fresh manager + v4-core routers. C2: the official manager.
+    function _setupManagerAndCurrencies() internal virtual {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
+    }
+
+    function setUp() public {
+        _beforeSetUp();
+        _setupManagerAndCurrencies();
         col = MockERC20(Currency.unwrap(currency0));
         usdc = MockERC20(Currency.unwrap(currency1));
         feed = new RoundFeed(address(this), 2e18); // 1 COL = 2 USDC
@@ -197,7 +203,8 @@ abstract contract SwapVMTier1Base is Test, Deployers {
         uint256 makerUsdc0 = usdc.balanceOf(maker);
         uint256 makerCol0 = col.balanceOf(maker);
         uint256 aquaUsdc0 = _usdcInAqua();
-        (,, uint256 debt0,) = market.positions(posId);
+        (, uint256 col0, uint256 debt0,) = market.positions(posId);
+        uint256 hf0 = market.healthFactor(posId);
 
         env.set(_tx(roundId));
         vm.prank(address(account));
@@ -229,6 +236,17 @@ abstract contract SwapVMTier1Base is Test, Deployers {
         assertEq(manager.balanceOf(address(hook), uint256(uint160(address(col)))), 0, "no collateral claims");
         assertEq(manager.balanceOf(address(hook), uint256(uint160(address(usdc)))), 0, "no USDC claims");
         assertEq(col.allowance(address(hook), address(swapVM)), 0, "no lingering allowance");
+
+        (, uint256 col1,,) = market.positions(posId);
+        BalanceTable.header("1inch Aqua: hook tier 1 fills through the gated SwapVM router");
+        BalanceTable.row("Borrower collateral (COL)", col0, col1);
+        BalanceTable.row("Borrower debt (USDC)", debt0, debt1);
+        BalanceTable.row("Health factor", hf0, market.healthFactor(posId));
+        BalanceTable.row("Maker wallet USDC", makerUsdc0, usdc.balanceOf(maker));
+        BalanceTable.row("Maker wallet COL (WETH stand-in)", makerCol0, col.balanceOf(maker));
+        BalanceTable.row("Maker USDC in Aqua (strategy balance)", aquaUsdc0, _usdcInAqua());
+        BalanceTable.row("Hook COL + USDC (tokens)", 0, col.balanceOf(address(hook)) + usdc.balanceOf(address(hook)));
+        BalanceTable.note(string.concat("Aqua: ", vm.toString(address(aqua)), " | PoolManager: ", vm.toString(address(manager))));
     }
 
     function test_strangerFillRevertsGateClosed() public {

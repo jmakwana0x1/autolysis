@@ -137,7 +137,7 @@ jobs:
         run: npx vitest run
 
   fork-unichain:
-    name: fork-unichain (C2 against the official Aqua, block 63190327)
+    name: fork-unichain (official PoolManager + official Aqua, block 63190327)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -151,8 +151,8 @@ jobs:
         with:
           version: ${{ env.FOUNDRY_VERSION }}
           # Foundry's RPC cache (~/.foundry/cache/rpc) for the pinned block: reruns hit the cache, not the RPC.
-          cache-key: foundry-rpc-unichain-63190327
-          cache-restore-keys: foundry-rpc-unichain-
+          cache-key: foundry-rpc-unichain-63190327-v2
+          cache-restore-keys: foundry-rpc-unichain-63190327-
       - name: Cache solc (0.8.26, 0.8.28, 0.8.30)
         uses: actions/cache@v5
         with:
@@ -166,10 +166,19 @@ jobs:
           just-version: ${{ env.JUST_VERSION }}
       - name: Build the 0.8.30 fork artifacts (out-aqua)
         run: just aqua-build
-      - name: C2 on the fork (one retry on rate limit; outcome in the job summary)
-        run: ./scripts/ci/fork-c2.sh
+      # Each step: one retry if the public RPC rate-limits; PASS/FAIL + the before/after balance table go to
+      # the job summary (scripts/fork-test.sh).
+      - name: "Uniswap: full liquidation through the official v4 PoolManager"
+        run: |
+          ./scripts/fork-test.sh "Uniswap: official PoolManager" test/fork/UniswapOfficialPoolManager.t.sol uniswap-fork-trace.txt
+      - name: "1inch (C2): tier 1 through the gated router into the official Aqua"
+        if: success() || failure()
+        run: |
+          ./scripts/fork-test.sh "1inch: official Aqua (C2)" test/fork/C2_OfficialAqua.t.sol c2-fork-trace.txt
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: c2-fork-trace
-          path: c2-fork-trace.txt
+          name: fork-traces
+          path: |
+            uniswap-fork-trace.txt
+            c2-fork-trace.txt

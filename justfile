@@ -21,9 +21,18 @@ build:
 aqua-build:
     FOUNDRY_PROFILE=aqua forge build
 
-# C2 (on fork): the C1 flow against the official Aqua on a Unichain mainnet fork; trace saved to deployments/
-fork-c2 rpc="https://mainnet.unichain.org" block="": aqua-build
-    UNICHAIN_RPC_URL={{rpc}} UNICHAIN_FORK_BLOCK={{block}} forge test --match-path test/fork/C2_OfficialAqua.t.sol -vvvv > deployments/c2-fork-trace.txt 2>&1; status=$?; grep -E "PASS|FAIL|Suite result" deployments/c2-fork-trace.txt; exit $status
+# Unichain mainnet fork proofs against OFFICIAL contracts, pinned to block 63190327 (override rpc/block).
+# Each prints PASS/FAIL and a before/after balance table, and saves the full trace in deployments/.
+# Uniswap: a full self-liquidation through the official v4 PoolManager 0x1F98…0004.
+fork-uniswap rpc="https://mainnet.unichain.org" block="63190327":
+    UNICHAIN_RPC_URL={{rpc}} UNICHAIN_FORK_BLOCK={{block}} ./scripts/fork-test.sh "Uniswap: official PoolManager" test/fork/UniswapOfficialPoolManager.t.sol deployments/uniswap-fork-trace.txt
+
+# 1inch (C2): hook tier 1 through our gated SwapVM router into the official Aqua 0x1111…a90a, on the official PoolManager.
+fork-c2 rpc="https://mainnet.unichain.org" block="63190327": aqua-build
+    UNICHAIN_RPC_URL={{rpc}} UNICHAIN_FORK_BLOCK={{block}} ./scripts/fork-test.sh "1inch: official Aqua (C2)" test/fork/C2_OfficialAqua.t.sol deployments/c2-fork-trace.txt
+
+# Both fork proofs
+fork-all: fork-uniswap fork-c2
 
 # Layer 1: unit + fuzz (10,000 runs per property), every commit
 test: aqua-build

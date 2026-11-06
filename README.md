@@ -62,6 +62,82 @@ in the workshop's step 6). The alt mempool admits it because the account is **st
 devnet's `NaiveStakingRegistry`). The exact texts from each are recorded per run in
 `deployments/<chainId>.json` and shown on the dashboard.
 
+## Sponsor proofs
+
+### Uniswap v4 and 1inch Aqua: proven on a Unichain mainnet fork against official contracts
+
+Both run against the **official** contracts at Unichain mainnet (chain 130) block **63,190,327**. Our
+contracts (hook, venue, market, account, gated router, pricer, test tokens) are deployed onto that fork.
+
+| Official contract | Address | Source |
+| --- | --- | --- |
+| Uniswap v4 PoolManager | `0x1F98400000000000000000000000000000000004` | Uniswap's v4 deployments page (Unichain). Checked on chain: same runtime bytecode as the v4 PoolManager except the immutable self-address and the metadata tail |
+| 1inch Aqua registry | `0x1111113CCf1426A8E30e2bfF5E005d929bF6a90a` | the official Aqua address (PLAN-v4.4 C2); codehash `0x720bc02d…341f8` |
+
+```bash
+just fork-uniswap   # full self-liquidation through the official v4 PoolManager (2 tests)
+just fork-c2        # hook tier 1 → gated SwapVM router → official Aqua, on the official PoolManager (3 tests)
+just fork-all       # both; each prints PASS/FAIL + a before/after balance table, traces in deployments/
+```
+
+Both also run on every push in CI's `fork-unichain` job (balance tables in the job summary, traces as the
+`fork-traces` artifact).
+
+**Uniswap: one liquidation, house tier + the official pool's curve** (`just fork-uniswap` output):
+
+| Balance | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Borrower collateral (COL) | 100.0000 | 28.0909 | -71.9090 |
+| Borrower debt (USDC) | 150.0000 | 33.7412 | -116.2587 |
+| Health factor | 0.8640 | 1.0789 | +0.2149 |
+| Official PoolManager COL | 4484.4869 | 4525.5317 | +41.0448 |
+| Official PoolManager USDC | 7558.5617 | 7492.3030 | -66.2587 |
+| Hook COL (tokens) | 0.0000 | 0.0000 | 0 |
+| Hook ERC-6909 claims (COL + USDC) | 0.0000 | 0.0000 | 0 |
+| Hook house deposits (USDC, tier 2) | 50.0000 | 0.0000 | -50.0000 |
+| House owner COL (paid for tier 2) | 0.0000 | 30.8641 | +30.8641 |
+| Market USDC (repayment in) | 850.0000 | 966.2587 | +116.2587 |
+
+Waterfall: tier 2 = 50.00 USDC (30.86 COL to the house), tier 3 = 41.04 COL sold on the official pool's
+curve. The `Swap` event comes from the official PoolManager, and the hook ends with no tokens and no claims.
+The hook is deployed the production way (CREATE2 with a mined salt so its address carries the permission
+bits), not etched.
+
+**1inch: tier 1 fills from an Aqua maker through the gated router** (`just fork-c2` output):
+
+| Balance | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Borrower collateral (COL) | 100.0000 | 28.0909 | -71.9090 |
+| Borrower debt (USDC) | 150.0000 | 33.5073 | -116.4926 |
+| Health factor | 0.8640 | 1.0865 | +0.2225 |
+| Maker wallet USDC | 1000.0000 | 883.5073 | -116.4926 |
+| Maker wallet COL (WETH stand-in) | 0.0000 | 71.9090 | +71.9090 |
+| Maker USDC in Aqua (strategy balance) | 1000.0000 | 883.5073 | -116.4926 |
+| Hook COL + USDC (tokens) | 0.0000 | 0.0000 | 0 |
+
+The maker's USDC moves from its wallet through the official Aqua (`pull`), and the collateral is pushed
+back to its wallet (`push`), at the cited oracle price (1.62). A stranger's fill, and the hook's own fill
+outside a liquidation, revert with `LiquidationGateClosed`.
+
+| What | file:line |
+| --- | --- |
+| Hook entry: `_beforeSwap` (authorize on sender + venue, ZERO_DELTA otherwise) | `src/backstop/BackstopHook.sol:138` |
+| Three-tier waterfall / SwapVM tier 1 | `src/backstop/BackstopHook.sol:179`, `:245` |
+| Venue: `V4Venue.unlockCallback` (settle-before-swap, flagged exact-in swap, minOut) | `src/backstop/V4Venue.sol:94` |
+| Gated router: `LiquidationGate` opcode `0xf9` and its check in `_dispatch` | `aqua-fork/src/AutolysisAquaRouterGated.sol:24`, `:46` |
+| Oracle pricer (quote == fill) | `aqua-fork/src/LiquidationPricer.sol:43` |
+| Fork setup (official addresses, pinned block, official-manager routers) | `test/fork/UnichainFork.sol:19`, `:20` |
+| Uniswap fork tests: full liquidation; outside swapper sees a normal pool | `test/fork/UniswapOfficialPoolManager.t.sol:153`, `:200` (hook mined + CREATE2 at `:71`) |
+| 1inch fork test (C2) = the C1 flow on official contracts | `test/fork/C2_OfficialAqua.t.sol:11` → `test/integration/C1_SwapVMTier1.t.sol:197`, `:252` |
+
+### EF alt mempool: on the devnet (partial)
+
+Deployed and staked on chain 1337. The real `ethrex_simulateFrameTransaction` VERIFY gas is **94,168**
+(outside reads, chosen) and **71,892** (storage-only). The canonical mempool rejected the liquidation with
+`"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender"`, and the alt
+mempool admitted it (all 17 admission checks passed), but the relayer dropped it after 4 attempts without
+inclusion. See `deployments/1337.json` and `docs/STATUS.md`.
+
 ## Sponsor tracks: where to look
 
 | Track | What | Where (file:line) | Proof | Label |
@@ -75,11 +151,12 @@ devnet's `NaiveStakingRegistry`). The exact texts from each are recorded per run
 | | EXO-010 reputation proposal, simulated | `kit/src/sim/exo010.ts:63` | `kit/test/exo010.test.ts`; dashboard chart | local test |
 | **Uniswap v4** | three-tier backstop hook; outside swappers see a normal pool | `src/backstop/BackstopHook.sol:138`, `:179` | `test/backstop/BackstopHook.t.sol` | local test |
 | | settle-before-swap venue; cited-round price for the pricer | `src/backstop/V4Venue.sol:94`, `:67` | `test/integration/V4Liquidation.t.sol:138` | local test |
-| | hook mined against the **official predeployed PoolManager** `0x6bF9…9848` | `script/Deploy.s.sol:47`, `:172` | `just gate-a` → `just scene uniswap-balances` | **written, not run** |
+| | full liquidation through the **official Unichain v4 PoolManager** `0x1F98…0004` | `test/fork/UniswapOfficialPoolManager.t.sol:153` (`just fork-uniswap`) | balance table above; CI `fork-unichain` | **on fork** |
+| | hook deployed on the devnet's official predeployed PoolManager `0x6bF9…9848` | `script/Deploy.s.sol:47`, `:172` | `deployments/1337.json` | **on devnet** (deployed; liquidation not yet included) |
 | **1inch Aqua / SwapVM** | gated router: `LiquidationGate` opcode `0xf9` | `aqua-fork/src/AutolysisAquaRouterGated.sol:46` | `aqua-fork/test/GatedAquaFill.t.sol` | local test |
 | | oracle pricer (Extruction), quote == fill | `aqua-fork/src/LiquidationPricer.sol:43` | `aqua-fork/test/OraclePricedFill.t.sol` | local test |
 | | hook tier 1 → gated router as taker, across solc 0.8.26/0.8.30 | `src/backstop/BackstopHook.sol:245`, `:264`, `src/interfaces/ISwapVMRouter.sol:14` | `test/integration/C1_SwapVMTier1.t.sol:191` | local test |
-| | the same against the **official Aqua** `0x1111…a90a` on a Unichain fork | `test/fork/C2_OfficialAqua.t.sol:11` (`just fork-c2`) | trace `deployments/c2-fork-trace.txt` (block 63,190,327) | **on fork** |
+| | the same against the **official Aqua** `0x1111…a90a` **and the official PoolManager** on a Unichain fork | `test/fork/C2_OfficialAqua.t.sol:11` (`just fork-c2`) | balance table above; trace `deployments/c2-fork-trace.txt` (block 63,190,327) | **on fork** |
 
 Explorer links per environment: devnet <!-- EXPLORER: devnet --> **TBD** · Unichain fork: n/a (local
 fork, trace committed) · local: n/a.
@@ -112,7 +189,8 @@ interface.
 just setup && just test && just aqua   # local suites (Foundry 104 + aqua 9) ; just invariants for stateful
 just gate-a                            # Phase A on the devnet, one unattended idempotent run
 just e2e                               # Phase B: reputation, crash, replace, attacks, uniswap-balances
-just fork-c2                           # C2 on a Unichain fork against the official Aqua
+just fork-uniswap                      # full liquidation on a Unichain fork, official v4 PoolManager
+just fork-c2                           # C2 on a Unichain fork: official Aqua + official PoolManager
 just demo-local                        # everything on anvil + a mock frame node, then the dashboard
 just dashboard                         # dashboard on http://127.0.0.1:5173 for CHAIN_ID via RPC_URL
 ```
@@ -131,7 +209,7 @@ forge 1.8.1, no keys and no devnet. What each job proves:
 | `contracts` | `just test`; invariants under `FOUNDRY_PROFILE=ci`; artifact `gas-report` = per-function `--gas-report` (suites that are correct in forge's isolation mode) + per-test `forge snapshot` (all suites) | the firewall approves one shape per (position, step) under single-field mutation fuzzing; liquidation math never lowers HF and matches the kit to the wei; the never-revert envelope; v4 hook + venue liquidation (C1: hook tier 1 through the real gated SwapVM router + Aqua); D1 fallback; collateral/debt conservation and "classic never preempts self-liquidation" as stateful invariants |
 | `aqua` | `just aqua` | the gated SwapVM/Aqua fork (solc 0.8.30): `LiquidationGate` blocks strangers and inactive venues; the oracle pricer's quote equals its fill |
 | `kit` | `tsc --noEmit` + `vitest` | the frame-tx builder round-trips through the real hegota-support encoder; simulate is sent the raw 0x06 bytes; `just gate-a` and the Phase B scenes behave as specified against a mocked RPC (stop on first error, idempotent rerun, replacement, attack rejection); the EXO-010 simulator |
-| `fork-unichain` | `scripts/ci/fork-c2.sh` | C2: the same liquidation flow fills through the **official** Aqua `0x1111…a90a` on a Unichain mainnet fork pinned to block 63,190,327 (trace artifact `c2-fork-trace`). A public-RPC rate limit is retried once and, if it persists, reported in the job summary |
+| `fork-unichain` | `scripts/fork-test.sh` ×2 (`just fork-uniswap`, `just fork-c2`) | on a Unichain mainnet fork pinned to block 63,190,327: a full self-liquidation through the **official** v4 PoolManager `0x1F98…0004` (tiers 2 + 3), and tier 1 through the gated router into the **official** Aqua `0x1111…a90a` on that same PoolManager. Balance tables in the job summary, traces in artifact `fork-traces`. A public-RPC rate limit is retried once and, if it persists, reported in the summary |
 
 Not in CI, by design: anything that needs devnet ETH or a private key (`just gate-a`, `just e2e`).
 
@@ -145,8 +223,9 @@ Not in CI, by design: anything that needs devnet ETH or a private key (`just gat
   price push itself.
 - **Tokens on the devnet are ours.** The devnet's USDC is deployer-mint only and WETH9 has no premint,
   so the pool pairs our ETH-backed MockWETH with MockUSDC on the official PoolManager.
-- **Aqua runs on a fork, not the devnet.** Tier 1 fills against the official Aqua on Unichain (C2); on the
-  devnet, tier 1 is empty until C3 deploys Aqua there.
+- **Uniswap and 1inch are proven on a fork, not live.** Both run against the official Unichain contracts on
+  a pinned mainnet fork with our own test tokens; nothing was broadcast to Unichain. On the devnet, tier 1
+  is empty until C3 deploys Aqua there.
 - **Live-only assumptions, still to confirm:** keyed (EIP-8250) txs being exempt from the per-sender
   cap of 4 (from the sidecar's docs), and same-key fee-bump replacement winning a 6-second block race
   (`just scene replace` records whichever happens).
