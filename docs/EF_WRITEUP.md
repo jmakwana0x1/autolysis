@@ -91,6 +91,25 @@ replacement already adds nothing to `seen` (REPUTATION-040).
   both frames `0x1`, `LiquidationOk`. VERIFY gas from simulate: 94,168 (outside reads, chosen) and 71,892
   (storage-only). The canonical mempool rejected the same tx: `Invalid params: Frame transaction
   validation-prefix simulation failed: StorageReadNonSender`.
-- Crash (12 positions, canonical vs alt): <!-- EXPLORER: crash --> **TBD**
-- Replacement and attacks: <!-- EXPLORER: replace / attacks --> **TBD**
+- Crash, **on devnet**: 12 positions (0.25 ETH each) liquidatable in one round, each sent to both
+  mempools.
+  - Canonical mempool: **0 of 12** accepted (`StorageReadNonSender`).
+  - Alt mempool: **12 of 12** included, all `LiquidationOk`. Eleven landed in blocks 3576 / 3579 / 3581
+    (4 / 4 / 3 per block from one account on separate nonce keys), e.g.
+    [`0xf502d8c4…f94d`](https://explorer.altmempool.wtf/tx/0xf502d8c4a655e1b9538505a666f87c583ebfa11e4a7eda310d66db667c08f94d?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc).
+  - The 12th send got no response from the RPC (`fetch failed`) and never reached a sidecar. It was resent
+    on a fresh round and included in block 6776:
+    [`0xdf40beb3…b1d0`](https://explorer.altmempool.wtf/tx/0xdf40beb38571731a96de0aa328f6669ac9b9590c6079f95934afb4a2478bb1d0?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc).
+  - Every hash is in `deployments/1337.json` (`scenes.crash`) and the README table.
+- Attacks, **on devnet**: 5 of 5 rejected at admission, each with the exact text recorded in
+  `scenes.attacks`.
+  - Our VERIFY rejected three: wrong selector → `Rejected(EXEC_SELECTOR)`; fee over cap →
+    `Rejected(FEE_CAP)`; stale round → `StaleRound()`.
+  - The sidecar's structural checks rejected two before VERIFY ran: the appended key (`nonceKeys must be
+    strictly increasing`) and frame 0 in DEFAULT mode (`frame transaction validation prefix not
+    recognized`).
+- Replacement, **not demonstrated**: the lower-fee tx was rejected at admission (`validation frame 0:
+  reverted … "approve failed"`). The +10% tx on the same key and sequence was admitted and included
+  ([`0xf793ccd2…4880`](https://explorer.altmempool.wtf/tx/0xf793ccd21e141aa3aa3129f512590997fb7679a3506598c99d575c46c48f4880?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc)).
+  The cause of the first rejection could not be reproduced afterwards.
 - Everything local and forked is reproducible with `just demo-local` and `just fork-c2`.
