@@ -195,7 +195,18 @@ describe("Phase B scenes", () => {
     expect(r.summary).toMatchObject({ positions: 12, canonicalAccepted: 0, altAdmitted: 12, included: 12, liquidationOk: 12 });
     expect(r.reputationAfter.opsIncluded - r.reputationBefore.opsIncluded).toBe(12);
     expect(r.ok).toBe(true);
+    expect(r.precheck.items).toHaveLength(12);
+    expect(r.precheck.items.every((p: any) => p.ok && p.verifyGasUsed + 100 <= p.verifyLimit)).toBe(true);
+    expect(r.precheck.balanceCovers).toBe(true);
     expect(h.store.state.reputation.snapshots.map((s: any) => s.label)).toEqual(["crash-before", "crash-after"]);
+  });
+
+  it("crash: a failing pre-check sends nothing", async () => {
+    const h = await setup();
+    const sim = h.deps.frame.simulate;
+    h.deps.frame.simulate = async (tx) => ({ ...(await sim(tx)), frames: [{ gasUsed: "0x1869c", succeeded: true }, { gasUsed: "0x927c0", succeeded: true }] }); // 99,996 + 100 > 99,900
+    await expect(crash(h.deps)).rejects.toThrow(/pre-check failed, nothing sent/);
+    expect(h.sent).toHaveLength(0);
   });
 
   it("replace: same key + sequence, both fees +10%, newer round -> the new tx is included, the old is cancelled", async () => {

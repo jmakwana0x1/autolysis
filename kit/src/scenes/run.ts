@@ -41,6 +41,7 @@ async function main() {
       chain: realChainIO(io, chainId),
       frame: realFrameIO(io),
       store: fileStore(chainId),
+      collateralWei: process.env.SCENE_COLLATERAL_WEI ? BigInt(process.env.SCENE_COLLATERAL_WEI) : undefined,
       cfg,
       log: console.log,
       writeFile: (rel, content) => {

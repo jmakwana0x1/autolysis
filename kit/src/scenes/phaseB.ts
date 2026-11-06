@@ -17,6 +17,8 @@ import { REJECT_NAMES, accountAbi, erc20Abi, feedAbi, marketAbi, wethAbi } from 
 export const OFFICIAL_POOL_MANAGER: Address = "0x6bF9Aa9c04fd001385742d61f6818C3236429848";
 const WAD = 10n ** 18n;
 const VERIFY_WINDOW = 4n; // RoundFeed.VERIFY_WINDOW
+const DEFAULT_COLLATERAL = 2n * 10n ** 16n;
+const ARBITRARY_SIG_GAS = 100;
 
 export type SceneDeps = {
   chain: ChainIO;
@@ -27,6 +29,7 @@ export type SceneDeps = {
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
   writeFile?: (relPath: string, content: string) => void; // repo-relative
+  collateralWei?: bigint; // ETH-backed WETH per scene position (default 0.02 ETH)
 };
 
 type Ctx = SceneDeps & {
@@ -172,7 +175,9 @@ export async function crash(d: SceneDeps, n = 12) {
   const rec: Record<string, any> = { startedAt: x.now().toISOString(), path: x.state.gateA.verify?.chosen };
   x.state.scenes.crash = rec;
   rec.reputationBefore = await reputationSnapshot(x.frame, x.account, "crash-before", x.now().toISOString());
-  const ids = await seedPositions(x, n, 2n * 10n ** 16n); // 0.02 ETH each
+  const collateral = d.collateralWei ?? DEFAULT_COLLATERAL;
+  rec.collateralPerPositionWei = collateral.toString();
+  const ids = await seedPositions(x, n, collateral);
   rec.positions = ids.map(String);
   const { round, tx } = await crashRound(x, ids);
   rec.round = round.toString();
@@ -183,6 +188,26 @@ export async function crash(d: SceneDeps, n = 12) {
   const txs = await Promise.all(ids.map(async (p) => canonicalLiquidationTx(await params(x, p, round))));
   const maxCost = totalLimits(txs[0]) * x.cfg.maxFeePerGas;
   rec.topUpTx = await topUp(x, (maxCost * BigInt(n) * 12n) / 10n);
+
+  // Pre-check, before ANY send: every liquidation simulates (VERIFY + SENDER succeed), VERIFY gasUsed + the
+  // ARBITRARY signature cost stays within the frame's execution limit, and the self-paying account covers
+  // n x the simulated maxCost (the alt mempool keeps pending gas within the payer's balance).
+  const pre = await Promise.all(txs.map(async (t, i) => {
+    const s = summarize(await x.frame.simulate(t));
+    const limit = Number(t.frames[0].limits.execution);
+    const ok = s.verifySucceeded === true && s.executeSucceeded === true && s.verifyGasUsed !== null && s.verifyGasUsed + ARBITRARY_SIG_GAS <= limit;
+    return { positionId: ids[i].toString(), verifyGasUsed: s.verifyGasUsed, verifyLimit: limit, executeGasUsed: s.executeGasUsed, maxCost: s.maxCost, ok, failure: s.failure };
+  }));
+  const needed = pre.reduce((a, p) => a + p.maxCost, 0n);
+  const balance = await x.chain.balance(x.account);
+  rec.precheck = { items: pre, accountBalanceWei: balance, neededWei: needed, balanceCovers: balance >= needed };
+  x.save();
+  const bad = pre.filter((p) => !p.ok);
+  if (bad.length || balance < needed) {
+    rec.ok = false;
+    x.save();
+    throw new Error(`pre-check failed, nothing sent: ${bad.length} tx(s) fail simulate/gas (${JSON.stringify(jsonSafe(bad))}); balance ${balance} vs needed ${needed}`);
+  }
 
   rec.items = [];
   for (let i = 0; i < n; i++) {
@@ -226,7 +251,7 @@ export async function replace(d: SceneDeps) {
   const x = context(d);
   const rec: Record<string, any> = { startedAt: x.now().toISOString() };
   x.state.scenes.replace = rec;
-  const [p] = await seedPositions(x, 1, 2n * 10n ** 16n);
+  const [p] = await seedPositions(x, 1, d.collateralWei ?? DEFAULT_COLLATERAL);
   rec.positionId = p.toString();
   const r1 = await crashRound(x, [p]);
   // A second, newer round at the same price: both are inside the VERIFY window, the old tx cites r1.
@@ -291,7 +316,7 @@ export async function attacks(d: SceneDeps) {
   const x = context(d);
   const rec: Record<string, any> = { startedAt: x.now().toISOString() };
   x.state.scenes.attacks = rec;
-  const [p] = await seedPositions(x, 1, 2n * 10n ** 16n);
+  const [p] = await seedPositions(x, 1, d.collateralWei ?? DEFAULT_COLLATERAL);
   rec.positionId = p.toString();
   const { round } = await crashRound(x, [p]);
   // A stale round must be outside the K-round window: make sure K newer rounds exist (same price).
