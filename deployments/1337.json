@@ -6351,6 +6351,29 @@
           "alt": {
             "admitted": false,
             "error": "fetch failed"
+          },
+          "retry": {
+            "startedAt": "2026-11-06T17:45:11.037Z",
+            "freshRoundTx": "0x3eb24cb2bd711f7e4c0e68547fe2663d96ed4039aaea69cf104182dad481977e",
+            "round": "5",
+            "snapshots": {},
+            "simulate": {
+              "verifyGasUsed": 94168,
+              "verifySucceeded": true,
+              "executeSucceeded": true,
+              "failure": null
+            },
+            "canonical": {
+              "accepted": false,
+              "responseText": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"Invalid params: Frame transaction validation-prefix simulation failed: StorageReadNonSender\"}}"
+            },
+            "alt": {
+              "admitted": true,
+              "hash": "0xdf40beb38571731a96de0aa328f6669ac9b9590c6079f95934afb4a2478bb1d0"
+            },
+            "included": true,
+            "outcome": "LiquidationOk",
+            "block": "0x1a78"
           }
         },
         {
@@ -6532,12 +6555,334 @@
       "summary": {
         "positions": 12,
         "canonicalAccepted": 0,
-        "altAdmitted": 11,
-        "included": 11,
-        "liquidationOk": 11
+        "altAdmitted": 12,
+        "included": 12,
+        "liquidationOk": 12,
+        "resent": [
+          "3"
+        ]
       },
-      "ok": false,
+      "ok": true,
       "finishedAt": "2026-11-06T12:27:25.615Z"
+    },
+    "replace": {
+      "startedAt": "2026-11-06T17:46:39.343Z",
+      "positionId": "15",
+      "rounds": {
+        "old": "6",
+        "new": "7",
+        "txs": [
+          "0x2f85d7492791f7441c66d6fcc1c153f139270c1944759d35b59c230df3975cc4",
+          "0x59f48c668bffc4d539bc6b6f56cfc935d8320d8a39db0cd40b6407a2c2794f26"
+        ]
+      },
+      "snapshots": {},
+      "sameKeyAndSequence": true,
+      "fees": {
+        "old": {
+          "maxFeePerGas": "2000000000",
+          "maxPriorityFeePerGas": "2000000000"
+        },
+        "new": {
+          "maxFeePerGas": "2200000001",
+          "maxPriorityFeePerGas": "2200000001"
+        }
+      },
+      "old": {
+        "admitted": false,
+        "error": "eth_sendFrameTransaction rejected: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"validation frame 0: reverted with data 0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000e617070726f7665206661696c6564000000000000000000000000000000000000\",\"code\":-32500}}"
+      },
+      "new": {
+        "admitted": true,
+        "hash": "0xf793ccd21e141aa3aa3129f512590997fb7679a3506598c99d575c46c48f4880"
+      },
+      "statusImmediately": {
+        "old": null,
+        "new": {
+          "tx": {
+            "chainId": "0x539",
+            "nonceKeys": [
+              "0xf0d0e2b7a5bfc99fa88b20d37df35dc7d535772be6080cf716b3ab5344b2d6"
+            ],
+            "nonceSeq": "0x0",
+            "sender": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+            "frames": [
+              {
+                "mode": "0x1",
+                "flags": "0x3",
+                "target": null,
+                "limits": {
+                  "execution": "0x1863c",
+                  "state": "0x241d0"
+                },
+                "value": "0x0",
+                "data": "0x3ad51b8d"
+              },
+              {
+                "mode": "0x2",
+                "flags": "0x0",
+                "target": null,
+                "limits": {
+                  "execution": "0x16e360",
+                  "state": "0x7a120"
+                },
+                "value": "0x0",
+                "data": "0xf3ab9cad000000000000000000000000000000000000000000000000000000000000000f0000000000000000000000000000000000000000000000000000000000000007"
+              }
+            ],
+            "signatures": [
+              {
+                "scheme": "0x0",
+                "signer": "0x",
+                "msg": "0x",
+                "signature": "0x"
+              }
+            ],
+            "fees": {
+              "maxPriorityFeePerGas": "0x83215601",
+              "maxFeePerGas": "0x83215601",
+              "maxFeePerBlobGas": "0x0"
+            },
+            "blobVersionedHashes": [],
+            "recentRootReferences": []
+          },
+          "sender": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "payer": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "status": "New"
+        }
+      },
+      "statusFinal": {
+        "old": null,
+        "new": {
+          "tx": {
+            "chainId": "0x539",
+            "nonceKeys": [
+              "0xf0d0e2b7a5bfc99fa88b20d37df35dc7d535772be6080cf716b3ab5344b2d6"
+            ],
+            "nonceSeq": "0x0",
+            "sender": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+            "frames": [
+              {
+                "mode": "0x1",
+                "flags": "0x3",
+                "target": null,
+                "limits": {
+                  "execution": "0x1863c",
+                  "state": "0x241d0"
+                },
+                "value": "0x0",
+                "data": "0x3ad51b8d"
+              },
+              {
+                "mode": "0x2",
+                "flags": "0x0",
+                "target": null,
+                "limits": {
+                  "execution": "0x16e360",
+                  "state": "0x7a120"
+                },
+                "value": "0x0",
+                "data": "0xf3ab9cad000000000000000000000000000000000000000000000000000000000000000f0000000000000000000000000000000000000000000000000000000000000007"
+              }
+            ],
+            "signatures": [
+              {
+                "scheme": "0x0",
+                "signer": "0x",
+                "msg": "0x",
+                "signature": "0x"
+              }
+            ],
+            "fees": {
+              "maxPriorityFeePerGas": "0x83215601",
+              "maxFeePerGas": "0x83215601",
+              "maxFeePerBlobGas": "0x0"
+            },
+            "blobVersionedHashes": [],
+            "recentRootReferences": []
+          },
+          "sender": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "payer": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "status": "Submitted",
+          "transaction": "0xf793ccd21e141aa3aa3129f512590997fb7679a3506598c99d575c46c48f4880"
+        }
+      },
+      "oldReceipt": null,
+      "newIncluded": true,
+      "newOutcome": "LiquidationOk",
+      "ok": false,
+      "replacementDemonstrated": false,
+      "note": "old tx was not admitted (validation frame 0 reverted: \"approve failed\"); only the +10% tx was admitted and included. Replacement not demonstrated. (Re-graded after fixing the scene check; the run originally reported OK.)"
+    },
+    "attacks": {
+      "startedAt": "2026-11-06T17:48:22.836Z",
+      "positionId": "16",
+      "snapshots": {},
+      "rounds": {
+        "crash": "8",
+        "cited": "8",
+        "stale": "4"
+      },
+      "items": {
+        "appendedKey": {
+          "simulate": {
+            "verifySucceeded": null,
+            "failure": null,
+            "decoded": null,
+            "canonicalViolation": "nonce_keys must be strictly increasing"
+          },
+          "send": {
+            "admitted": false,
+            "error": "eth_sendFrameTransaction rejected: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"nonceKeys must be strictly increasing\",\"code\":-32602}}"
+          },
+          "rejected": true
+        },
+        "wrongSelector": {
+          "simulate": {
+            "verifySucceeded": null,
+            "failure": "revert; the frame reverted; Invalid Transaction: Invalid frame transaction: VERIFY frame 0 (target 0x91233f8def56ac435a7f658ac8f96c591939cd40, 4765 bytes of code) failed: RevertOpcode; frame 0",
+            "decoded": "Rejected(EXEC_SELECTOR)",
+            "canonicalViolation": "validation prefix frame reverted"
+          },
+          "send": {
+            "admitted": false,
+            "error": "eth_sendFrameTransaction rejected: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"validation frame 0: reverted with data 0xf73a052c0000000000000000000000000000000000000000000000000000000000000005\",\"code\":-32500}}"
+          },
+          "rejected": true
+        },
+        "feeOverCap": {
+          "simulate": {
+            "verifySucceeded": null,
+            "failure": "revert; the frame reverted; Invalid Transaction: Invalid frame transaction: VERIFY frame 0 (target 0x91233f8def56ac435a7f658ac8f96c591939cd40, 4765 bytes of code) failed: RevertOpcode; frame 0",
+            "decoded": "Rejected(FEE_CAP)",
+            "canonicalViolation": "validation prefix frame reverted"
+          },
+          "send": {
+            "admitted": false,
+            "error": "eth_sendFrameTransaction rejected: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"validation frame 0: reverted with data 0xf73a052c000000000000000000000000000000000000000000000000000000000000000d\",\"code\":-32500}}"
+          },
+          "rejected": true
+        },
+        "staleRound": {
+          "simulate": {
+            "verifySucceeded": null,
+            "failure": "revert; the frame reverted; Invalid Transaction: Invalid frame transaction: VERIFY frame 0 (target 0x91233f8def56ac435a7f658ac8f96c591939cd40, 4765 bytes of code) failed: RevertOpcode; frame 0",
+            "decoded": null,
+            "canonicalViolation": "StorageReadNonSender"
+          },
+          "send": {
+            "admitted": false,
+            "error": "eth_sendFrameTransaction rejected: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"validation frame 0: reverted with data 0x04d28871\",\"code\":-32500}}"
+          },
+          "rejected": true
+        },
+        "frame0WrongMode": {
+          "simulate": {
+            "verifySucceeded": null,
+            "failure": "Invalid Transaction: Invalid frame transaction: frame 1 is a SENDER frame but no frame approved execution",
+            "decoded": null,
+            "canonicalViolation": "frame transaction validation prefix does not match any recognized shape"
+          },
+          "send": {
+            "admitted": false,
+            "error": "eth_sendFrameTransaction rejected: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"frame transaction validation prefix not recognized\",\"code\":-32502}}"
+          },
+          "rejected": true
+        }
+      },
+      "ok": true
+    },
+    "uniswapBalances": {
+      "liquidation": "0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56",
+      "poolManager": "0x6bF9Aa9c04fd001385742d61f6818C3236429848",
+      "officialPoolManager": true,
+      "rows": [
+        [
+          "Borrower position collateral (WETH wei)",
+          "100000000000000000",
+          "68590814196242172"
+        ],
+        [
+          "Borrower position debt (USDC wei)",
+          "150000000000000000",
+          "93632567849686848"
+        ],
+        [
+          "Health factor (WAD)",
+          "960000000000000000",
+          "1054876254180602007"
+        ],
+        [
+          "PoolManager WETH",
+          "2955301087913716969",
+          "2955301087913716969"
+        ],
+        [
+          "PoolManager USDC",
+          "2955301087913716969",
+          "2955301087913716969"
+        ],
+        [
+          "Hook WETH (tokens)",
+          "0",
+          "0"
+        ],
+        [
+          "Hook USDC (tokens)",
+          "1000000000000000000000",
+          "999943632567849686848"
+        ],
+        [
+          "Hook house deposits (USDC)",
+          "1000000000000000000000",
+          "999943632567849686848"
+        ],
+        [
+          "Hook ERC-6909 claims WETH",
+          "0",
+          "0"
+        ],
+        [
+          "Hook ERC-6909 claims USDC",
+          "0",
+          "0"
+        ],
+        [
+          "House (hook owner) WETH",
+          "997044698912086283031",
+          "997076014152169790338"
+        ],
+        [
+          "Account ETH (self-pay tank)",
+          "50000000000000000",
+          "48270651720250521"
+        ]
+      ],
+      "hookHoldsNothing": true,
+      "current": {
+        "position": {
+          "id": "1",
+          "owner": "0x405D3678Ba6f3854e4DCA3F49115e09f16622B2c",
+          "collateral": "68590814196242172",
+          "debt": "93632567849686848",
+          "liquidations": "1"
+        },
+        "healthFactor": "769004789297658863",
+        "accountEth": "49036308507426145",
+        "marketUsdc": "996765307150313152414",
+        "marketWeth": "2647792275574112736",
+        "marketFeeBilledWei": "3147181628392473",
+        "hookHouseUsdc": "998307567849686847586",
+        "hookUsdc": "998307567849686847586",
+        "hookWeth": "0",
+        "poolManagerUsdc": "2955301087913716969",
+        "poolManagerWeth": "2955301087913716969",
+        "hookClaimsUsdc": "0",
+        "hookClaimsWeth": "0",
+        "hookOwnerWeth": "998093759454883777822",
+        "hookOwnerUsdc": "1000001971823912086283031"
+      },
+      "markdown": "Liquidation `0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56` (position 1) through the official predeployed PoolManager `0x6bF9Aa9c04fd001385742d61f6818C3236429848`.\n\n| Balance | Before | After |\n| --- | ---: | ---: |\n| Borrower position collateral (WETH wei) | 100000000000000000 | 68590814196242172 |\n| Borrower position debt (USDC wei) | 150000000000000000 | 93632567849686848 |\n| Health factor (WAD) | 960000000000000000 | 1054876254180602007 |\n| PoolManager WETH | 2955301087913716969 | 2955301087913716969 |\n| PoolManager USDC | 2955301087913716969 | 2955301087913716969 |\n| Hook WETH (tokens) | 0 | 0 |\n| Hook USDC (tokens) | 1000000000000000000000 | 999943632567849686848 |\n| Hook house deposits (USDC) | 1000000000000000000000 | 999943632567849686848 |\n| Hook ERC-6909 claims WETH | 0 | 0 |\n| Hook ERC-6909 claims USDC | 0 | 0 |\n| House (hook owner) WETH | 997044698912086283031 | 997076014152169790338 |\n| Account ETH (self-pay tank) | 50000000000000000 | 48270651720250521 |"
     }
   },
   "reputation": {
@@ -6597,6 +6942,27 @@
           "address": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
           "opsSeen": 11,
           "opsIncluded": 11,
+          "status": "ok",
+          "isWhitelisted": false,
+          "isBlacklisted": false,
+          "stake": "0x2aa1efb94e0000",
+          "unstakeDelaySec": 86400,
+          "withdrawTime": "0x0",
+          "isStaked": true
+        }
+      },
+      {
+        "label": "after",
+        "at": "2026-11-06T17:49:21.630Z",
+        "listed": true,
+        "opsSeen": 10,
+        "opsIncluded": 10,
+        "status": "ok",
+        "isStaked": true,
+        "raw": {
+          "address": "0x91233f8dEf56AC435a7F658AC8F96C591939cd40",
+          "opsSeen": 10,
+          "opsIncluded": 10,
           "status": "ok",
           "isWhitelisted": false,
           "isBlacklisted": false,
