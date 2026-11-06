@@ -1,8 +1,7 @@
 # Autolysis: self-liquidating loans on the EIP-8141 alt mempool
 
 *Write-up for the Ethereum Foundation alt-mempool track. Labels: **on devnet** · **on fork** ·
-**local test** · **mock only** · **written, not run**. Explorer links are placeholders until the devnet
-run.*
+**local test** · **mock only** · **written, not run**.*
 
 ## 1. The app
 
@@ -24,8 +23,9 @@ Why it needs the alt mempool:
   replaces a stale pending one on the same key with a +10% fee bump.
 - **It must fit the 100k VERIFY cap.** The sidecar requires the VERIFY limit plus the signature cost to
   be ≤ 100,000 (`validationPrefix.ts:288`). A1 shrank VERIFY to a fixed-size read of 15 frame-opcode
-  values: 71,822 gas reading outside state, 50,414 on the storage-only fallback (**mock only**). The
-  devnet number decides the path (A5).
+  values. On the devnet, simulate measured **94,168** gas reading outside state and **71,892** on the
+  storage-only fallback (**on devnet**; the mock had said 71,822 / 50,414). Outside reads fits, so it is
+  the path in use.
 
 What VERIFY checks, and what it leaves to the protocol, is spelled out on `CanonicalView`
 (`src/frame/FrameTypes.sol:51`). Sender and frame-0 target are implied by APPROVE
@@ -85,7 +85,12 @@ replacement already adds nothing to `seen` (REPUTATION-040).
 
 ## 4. Status and links
 
-- Phase A on the devnet: `just gate-a`. Links: <!-- EXPLORER: gate-a --> **TBD**
+- Phase A on the devnet (`just gate-a`), **on devnet**: keyless self-paid liquidation
+  [`0x913762f6…fe56`](https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc),
+  included in block 2865: type `0x6` from the AutolysisAccount `0x91233f8dEf56AC435a7F658AC8F96C591939cd40`,
+  both frames `0x1`, `LiquidationOk`. VERIFY gas from simulate: 94,168 (outside reads, chosen) and 71,892
+  (storage-only). The canonical mempool rejected the same tx: `Invalid params: Frame transaction
+  validation-prefix simulation failed: StorageReadNonSender`.
 - Crash (12 positions, canonical vs alt): <!-- EXPLORER: crash --> **TBD**
 - Replacement and attacks: <!-- EXPLORER: replace / attacks --> **TBD**
 - Everything local and forked is reproducible with `just demo-local` and `just fork-c2`.
