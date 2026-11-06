@@ -327,7 +327,12 @@ export async function replace(d: SceneDeps) {
   rec.oldReceipt = rec.old.hash ? await x.frame.receipt(rec.old.hash) : null;
   rec.newIncluded = receiptOk(rNew);
   rec.newOutcome = rNew ? liquidationOutcome(rNew, x.account, p) : "no receipt";
-  rec.ok = rec.sameKeyAndSequence && rec.newIncluded && rec.newOutcome === "LiquidationOk" && !receiptOk(rec.oldReceipt);
+  // A replacement is only demonstrated if the OLD tx was admitted first and then displaced (never included)
+  // by the new one on the same key + sequence. A rejected old tx proves nothing about replacement.
+  rec.replacementDemonstrated =
+    rec.sameKeyAndSequence && rec.old.admitted === true && rec.new.admitted === true && rec.newIncluded && !receiptOk(rec.oldReceipt);
+  rec.ok = rec.replacementDemonstrated && rec.newOutcome === "LiquidationOk";
+  if (!rec.old.admitted) rec.note = `old tx was not admitted (${rec.old.error}); replacement not demonstrated`;
   x.save();
   return rec;
 }

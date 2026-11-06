@@ -248,6 +248,24 @@ describe("Phase B scenes", () => {
     expect(r.ok).toBe(true);
   });
 
+  it("replace: a rejected old tx is NOT a demonstrated replacement", async () => {
+    const h = await setup();
+    const send = h.deps.frame.sendFrame;
+    let first = true;
+    h.deps.frame.sendFrame = async (tx) => {
+      if (first) {
+        first = false;
+        throw new Error('eth_sendFrameTransaction rejected: {"error":{"message":"validation frame 0: reverted ... approve failed"}}');
+      }
+      return send(tx);
+    };
+    const r = await replace(h.deps);
+    expect(r.newIncluded).toBe(true);
+    expect(r.replacementDemonstrated).toBe(false);
+    expect(r.ok).toBe(false);
+    expect(r.note).toMatch(/not admitted.*replacement not demonstrated/);
+  });
+
   it("attacks: each of the 5 is rejected, with the decoded VERIFY reason and the exact send text", async () => {
     const h = await setup();
     const r = await attacks(h.deps);
