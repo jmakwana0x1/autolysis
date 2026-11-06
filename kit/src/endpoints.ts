@@ -19,7 +19,12 @@ export const ENDPOINTS = {
 
 export const CHAIN_ID = 1337;
 
-/** Where transactions are sent (override with RPC_URL). */
+/** Where FRAME transactions are sent, polled and reputation is read: the MINER sidecar (bundlingMode
+ *  "auto"). Observed Nov 6: the gateway (bundlingMode "manual") admitted a keyed frame tx but never relayed
+ *  it; the workshop's plain self-relay sent to the miner was included in ~4 s. Override with FRAME_RPC_URL. */
+export const frameSendUrl = (): string => process.env.FRAME_RPC_URL ?? ENDPOINTS.miner;
+
+/** Where legacy transactions and the canonical-mempool attempt are sent (override with RPC_URL). */
 export const sendUrl = (): string => process.env.RPC_URL ?? ENDPOINTS.gateway;
 /** Where read-only simulate / receipts / debug run (override with ETHREX_URL, else RPC_URL, else root). */
 export const ethrexUrl = (): string => process.env.ETHREX_URL ?? process.env.RPC_URL ?? ENDPOINTS.ethrex;

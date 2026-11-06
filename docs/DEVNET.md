@@ -15,8 +15,8 @@ RPC to those hosts); every status below is `local test` / `written, not run` unt
 
 | What | URL |
 | --- | --- |
-| Gateway sidecar (send everything here) | `https://altmempoolgateway.forshtat.com/rpc` |
-| Miner sidecar | `https://altmempool.forshtat.com/rpc` |
+| Gateway sidecar (legacy txs, canonical `eth_sendRawTransaction`) | `https://altmempoolgateway.forshtat.com/rpc` |
+| Miner sidecar: **send frame txs here** (`eth_sendFrameTransaction`, status, reputation) | `https://altmempool.forshtat.com/rpc` |
 | ethrex root (simulate, receipts, `debug_*`) | `https://altmempool.forshtat.com` |
 | Explorer | `https://explorer.altmempool.wtf/` |
 
@@ -37,7 +37,10 @@ endpoints above serve chain 1337. The gateway faucet there answered `The faucet 
 
 ## Sending and probing
 
-- **Alt mempool:** `eth_sendFrameTransaction([toWire(tx)])` → gateway.
+- **Alt mempool:** `eth_sendFrameTransaction([toWire(tx)])` → **miner sidecar** (auto-bundling). Changed Nov 6:
+  the gateway (manual bundling) admitted our keyed frame tx but never relayed it, while the workshop's plain
+  self-relay sent to the miner was included in ~4 s (control tx `0x18101b16…b495`, block 2780). The kit
+  sends frame txs to `frameSendUrl()` (miner; `FRAME_RPC_URL` overrides).
 - **Canonical mempool:** `eth_sendRawTransaction([encodeRawFrameTx(tx)])` → gateway, forwarded to ethrex
   (workshop step 6).
 - **Status/receipts:** `skandha_frameTransactionStatus(hash)`, `eth_getFrameTransactionReceipt(hash)`

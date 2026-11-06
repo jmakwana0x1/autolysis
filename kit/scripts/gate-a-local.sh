@@ -16,14 +16,14 @@ cast rpc --rpc-url http://127.0.0.1:8546 anvil_setCode $REG \
   "$(jq -r .deployedBytecode.object out/NaiveStakingRegistry.sol/NaiveStakingRegistry.json)" >/dev/null
 (cd kit && ANVIL_URL=http://127.0.0.1:8546 MOCK_PORT=8547 exec node --import tsx src/gateA/mockNode.ts) & MOCK=$!
 for _ in $(seq 50); do cast chain-id --rpc-url http://127.0.0.1:8547 >/dev/null 2>&1 && break; sleep 0.2; done
-run() { (cd kit && CHAIN_ID=31337 PRIVATE_KEY=$PK0 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 \
+run() { (cd kit && CHAIN_ID=31337 PRIVATE_KEY=$PK0 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 FRAME_RPC_URL=http://127.0.0.1:8547 \
   STAKING_REGISTRY=$REG GATE_A_POLL_MS=200 npx tsx src/gateA/run.ts); }
 echo "=== gate-a run 1"; run
 echo "=== gate-a run 2 (idempotence)"; run
 # Phase B scenes that anvil + the mock node can actually execute (crash: 12 SENDER-frame liquidations
 # emulated; uniswap-balances; reputation). attacks/replace need real VERIFY + the real mempool: unit-tested
 # in kit/test/scenes.test.ts, devnet only.
-scene() { (cd kit && CHAIN_ID=31337 PRIVATE_KEY=$PK0 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 \
+scene() { (cd kit && CHAIN_ID=31337 PRIVATE_KEY=$PK0 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 FRAME_RPC_URL=http://127.0.0.1:8547 \
   GATE_A_POLL_MS=200 npx tsx src/scenes/run.ts "$@"); }
 if [ "${PHASE_B:-1}" = "1" ]; then
   echo "=== scene crash";            scene crash | tail -12
@@ -33,6 +33,6 @@ fi
 # `just demo-local`: keep anvil + the mock node up and serve the dashboard against them (Ctrl-C stops all).
 if [ "${KEEP_RUNNING:-0}" = "1" ]; then
   echo "=== dashboard (local chain 31337, frame RPCs mocked)"
-  CHAIN_ID=31337 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 PRIVATE_KEY=$PK0 GATE_A_POLL_MS=200 \
+  CHAIN_ID=31337 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 FRAME_RPC_URL=http://127.0.0.1:8547 PRIVATE_KEY=$PK0 GATE_A_POLL_MS=200 \
     node app/server.mjs
 fi

@@ -53,7 +53,8 @@ export type DeployFn = (opts: { usePredeployedV4: boolean }) => Promise<Record<s
 
 export type IoConfig = {
   rpcUrl: string; // gateway /rpc (sends, reads)
-  ethrexUrl: string; // ethrex root (simulate)
+  ethrexUrl: string; // ethrex root (simulate, receipts)
+  frameUrl: string; // sidecar that takes eth_sendFrameTransaction (the miner, auto-bundling)
   privateKey: Hex;
   legacyGasPriceWei: bigint;
   legacyGasLimit?: bigint;
@@ -138,16 +139,15 @@ export function realFrameIO(cfg: IoConfig): FrameIO {
     simulate: (tx) => simulateRaw((m, p) => rpc(cfg.ethrexUrl, m, p ?? []), tx),
     sendRaw: (raw) => jsonRpcRaw(cfg.rpcUrl, "eth_sendRawTransaction", [raw]),
     sendFrame: async (tx) => {
-      const r = await jsonRpcRaw(cfg.rpcUrl, "eth_sendFrameTransaction", [toWire(tx)]);
+      const r = await jsonRpcRaw(cfg.frameUrl, "eth_sendFrameTransaction", [toWire(tx)]);
       if (!r.ok) throw new Error(`eth_sendFrameTransaction rejected: ${r.text}`);
       return r.result as Hex;
     },
-    status: async (hash) => (await jsonRpcRaw(cfg.rpcUrl, "skandha_frameTransactionStatus", [hash])).result ?? null,
-    // The workshop reads frame receipts with eth_getTransactionReceipt through the gateway
-    // (lib/mempool-workshop/src/lib/chain.ts waitMined + frameTx/send.ts waitForReceipt).
-    receipt: async (hash) => ((await jsonRpcRaw(cfg.rpcUrl, "eth_getTransactionReceipt", [hash])).result as FrameReceipt) ?? null,
+    status: async (hash) => (await jsonRpcRaw(cfg.frameUrl, "skandha_frameTransactionStatus", [hash])).result ?? null,
+    // Frame receipts (with per-frame frameReceipts) straight from ethrex, as the workshop reads them.
+    receipt: async (hash) => ((await jsonRpcRaw(cfg.ethrexUrl, "eth_getTransactionReceipt", [hash])).result as FrameReceipt) ?? null,
     reputation: async () => {
-      const r = await jsonRpcRaw(cfg.rpcUrl, "skandha_explorer_listReputation", [{ limit: 200 }]);
+      const r = await jsonRpcRaw(cfg.frameUrl, "skandha_explorer_listReputation", [{ limit: 200 }]);
       return r.ok ? r.result : { error: r.text };
     },
   };

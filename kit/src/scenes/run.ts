@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hex } from "viem";
 import { ROOT } from "../registry.js";
-import { ENDPOINTS } from "../endpoints.js";
+import { ENDPOINTS, frameSendUrl } from "../endpoints.js";
 import { defaultConfig } from "../gateA/gateA.js";
 import { realChainIO, realFrameIO, type IoConfig } from "../gateA/io.js";
 import { fileStore } from "../gateA/store.js";
@@ -28,11 +28,13 @@ async function main() {
   const io: IoConfig = {
     rpcUrl: process.env.RPC_URL ?? ENDPOINTS.gateway,
     ethrexUrl: process.env.ETHREX_URL ?? ENDPOINTS.ethrex,
+    frameUrl: frameSendUrl(),
     privateKey: pk,
     legacyGasPriceWei: BigInt(process.env.LEGACY_GAS_PRICE_WEI ?? "2000000"),
   };
   const chainId = Number(process.env.CHAIN_ID ?? "1337");
   const cfg = defaultConfig(chainId, process.env.EXPLORER_URL ?? ENDPOINTS.explorer);
+  cfg.explorerNode = frameSendUrl();
   if (process.env.GATE_A_POLL_MS) cfg.pollMs = Number(process.env.GATE_A_POLL_MS);
   const out = await scene(
     {

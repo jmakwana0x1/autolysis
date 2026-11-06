@@ -2,7 +2,7 @@
 // ETHREX_URL (ethrex root, for simulate), optional EXPLORER_URL, STAKING_REGISTRY, LEGACY_GAS_PRICE_WEI.
 // Writes everything to deployments/<chainId>.json and stops on the first error with its exact text.
 import type { Address, Hex } from "viem";
-import { ENDPOINTS } from "../endpoints.js";
+import { ENDPOINTS, frameSendUrl } from "../endpoints.js";
 import { defaultConfig, runGateA, GateAError } from "./gateA.js";
 import { fileStore } from "./store.js";
 import { forgeDeploy, realChainIO, realFrameIO, type IoConfig } from "./io.js";
@@ -14,11 +14,13 @@ async function main() {
   const io: IoConfig = {
     rpcUrl: process.env.RPC_URL ?? ENDPOINTS.gateway,
     ethrexUrl: process.env.ETHREX_URL ?? ENDPOINTS.ethrex,
+    frameUrl: frameSendUrl(),
     privateKey: pk,
     legacyGasPriceWei: BigInt(process.env.LEGACY_GAS_PRICE_WEI ?? "2000000"), // 0.002 gwei
   };
   const chainId = Number(process.env.CHAIN_ID ?? "1337");
   const cfg = defaultConfig(chainId, process.env.EXPLORER_URL ?? ENDPOINTS.explorer);
+  cfg.explorerNode = frameSendUrl();
   if (process.env.STAKING_REGISTRY) cfg.registry = process.env.STAKING_REGISTRY as Address;
   if (process.env.FRAME_MAX_FEE_WEI) cfg.maxFeePerGas = BigInt(process.env.FRAME_MAX_FEE_WEI);
   if (process.env.GATE_A_POLL_MS) cfg.pollMs = Number(process.env.GATE_A_POLL_MS);

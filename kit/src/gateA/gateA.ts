@@ -20,6 +20,7 @@ const WAD = 10n ** 18n;
 export type GateAConfig = {
   chainId: number;
   explorerUrl: string;
+  explorerNode?: string; // sidecar /rpc the explorer link points at (?node=)
   registry: Address;
   stakeWei: bigint;
   unstakeDelaySec: number;
@@ -289,11 +290,11 @@ export async function runGateA(d: Deps): Promise<Record<string, any>> {
   });
 
   // --------------------------------------------------------------------------------------- build tx
-  const buildTx = async (positionId: bigint): Promise<FrameTx> => {
+  const buildTx = async (positionId: bigint, roundId: bigint = round): Promise<FrameTx> => {
     const key = nonceKeyFor(market, positionId);
     const sequence = BigInt(await chain.storageAt(NONCE_MANAGER, keyedNonceSlot(account, key)));
     return canonicalLiquidationTx({
-      chainId: cfg.chainId, account, market, positionId, roundId: round, sequence,
+      chainId: cfg.chainId, account, market, positionId, roundId, sequence,
       maxFeePerGas: cfg.maxFeePerGas, verifyGas: cfg.verifyGasLimit, verifyStateLimit: cfg.verifyStateLimit,
       executeGas: cfg.executeGasLimit, executeStateLimit: cfg.executeStateLimit, signatureForm: "arbitrary",
     });
@@ -366,9 +367,23 @@ export async function runGateA(d: Deps): Promise<Record<string, any>> {
     if (L.receipt && receiptOk(L.receipt) && L.outcome === "LiquidationOk") return { skipped: true };
     const target = BigInt(g.liquidationTarget);
     if (!L.hash || L.positionId !== target.toString()) {
-      const tx = await buildTx(target);
+      // A fresh same-price round right before sending, so the cited round cannot go stale while pending.
+      const { RoundFeed } = C();
+      const latestId = await chain.read<bigint>(RoundFeed, feedAbi, "latestRound");
+      const latestPx = (await chain.read<{ price: bigint }>(RoundFeed, feedAbi, "getRound", [latestId])).price;
+      L.freshRoundTx = (await chain.write(RoundFeed, feedAbi, "post", [latestPx])).hash;
+      const fresh = await chain.read<bigint>(RoundFeed, feedAbi, "latestRound");
+      if (g.verify?.chosen === "storage-only") {
+        L.freshSnapshotTx = (await chain.write(account, accountAbi, "pushVerifySnapshot", [target, fresh])).hash;
+      }
+      const tx = await buildTx(target, fresh);
+      const sim = summarize(await frame.simulate(tx));
+      L.simulateBeforeSend = sim;
+      if (!(sim.verifySucceeded && sim.executeSucceeded)) {
+        throw new Error(`fresh-round tx no longer simulates: ${sim.failure ?? sim.executionStatus}`);
+      }
       L.positionId = target.toString();
-      L.round = round.toString();
+      L.round = fresh.toString();
       L.localTxHash = txHash(profile, tx);
       L.before = await balances(chain, C(), target);
       L.hash = await frame.sendFrame(tx);
@@ -382,7 +397,7 @@ export async function runGateA(d: Deps): Promise<Record<string, any>> {
     if (!receiptOk(r)) throw new Error(`liquidation ${L.hash} mined but not every frame succeeded: ${JSON.stringify(r)}`);
     L.outcome = liquidationOutcome(r, account, target);
     L.after = await balances(chain, C(), target);
-    L.explorer = { url: cfg.explorerUrl, search: L.hash };
+    L.explorer = explorerLink(cfg, L.hash);
     if (L.outcome !== "LiquidationOk") throw new Error(`liquidation ${L.hash} executed but the account emitted ${L.outcome}`);
     return { hash: L.hash, outcome: L.outcome };
   });
@@ -395,6 +410,12 @@ export async function runGateA(d: Deps): Promise<Record<string, any>> {
 
 // ------------------------------------------------------------------------------------------- helpers
 
+export function explorerLink(cfg: GateAConfig, hash: string): { url: string; node?: string } {
+  const base = cfg.explorerUrl.endsWith("/") ? cfg.explorerUrl : `${cfg.explorerUrl}/`;
+  const node = cfg.explorerNode ? `?node=${encodeURIComponent(cfg.explorerNode)}` : "";
+  return { url: `${base}tx/${hash}${node}`, node: cfg.explorerNode };
+}
+
 export function receiptOk(r: FrameReceipt | null | undefined): boolean {
   if (!r) return false;
   return r.status === "0x1" && (r.frameReceipts ?? []).every((f) => f.status === "0x1");
@@ -405,6 +426,10 @@ export async function waitReceipt(frame: FrameIO, hash: Hex, cfg: GateAConfig, s
   for (;;) {
     const r = await frame.receipt(hash);
     if (r) return r;
+    const st = (await frame.status(hash)) as { status?: string; reason?: string } | null;
+    if (st?.status === "Cancelled" || st?.status === "Reverted") {
+      throw new Error(`${hash} ${st.status} by the sidecar: ${st.reason ?? "(no reason)"}`);
+    }
     if (Date.now() > deadline) {
       throw new Error(`no receipt for ${hash} after ${cfg.receiptTimeoutMs / 1000}s; status: ${JSON.stringify(await frame.status(hash))}`);
     }

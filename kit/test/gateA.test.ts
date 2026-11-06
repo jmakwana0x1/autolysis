@@ -175,7 +175,10 @@ describe("just gate-a", () => {
     const g = s.gateA;
     expect(h.deploys()).toBe(1);
     expect(h.w.stake).toBe(12n * 10n ** 15n);
-    expect(h.calls).toEqual(["simulate:outside", "simulate:storage", "sendRaw", "sendFrame"]);
+    // path choice (both), canonical attempt, then a fresh round + re-simulate right before the alt send
+    expect(h.calls).toEqual(["simulate:outside", "simulate:storage", "sendRaw", "simulate:outside", "sendFrame"]);
+    expect(BigInt(g.liquidation.round)).toBeGreaterThan(BigInt(g.round)); // cites the fresh round, not the crash round
+    expect(g.liquidation.freshRoundTx).toBeDefined();
     expect(g.verify.chosen).toBe("outside-reads");
     expect(g.verify.outsideReads.verifyGasUsed).toBe(71_822);
     expect(g.verify.storageOnly.verifyGasUsed).toBe(50_414);
