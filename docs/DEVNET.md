@@ -20,6 +20,16 @@ RPC to those hosts); every status below is `local test` / `written, not run` unt
 | ethrex root (simulate, receipts, `debug_*`) | `https://altmempool.forshtat.com` |
 | Explorer | `https://explorer.altmempool.wtf/` |
 
+**Explorer links** (route `/tx/$hash` in `lib/mempool-workshop-sidecar/packages/devnet-ui/src/app.tsx:197`):
+`https://explorer.altmempool.wtf/tx/<hash>?node=<url-encoded sidecar /rpc>`; `node` selects which sidecar's
+pool/admission record is shown (e.g. `https%3A%2F%2Faltmempoolgateway.forshtat.com%2Frpc`). It is a
+frame-tx (mempool) explorer; plain legacy txs are looked up by hash on ethrex instead.
+
+**Bundling (observed Nov 6):** the gateway sidecar runs `bundlingMode: "manual"` and the miner sidecar
+(`altmempool.forshtat.com/rpc`) `"auto"`. A keyed liquidation sent to the gateway was admitted (status
+`New`) but the miner sidecar never saw it (`Frame transaction not found`) and it was not relayed within
+180 s, so "send everything to the gateway" did not get a frame tx included this time.
+
 Checked Nov 5 (laptop): `gateway{1,2,3}.altmempool.wtf` and `devnet{1,2,3}.altmempool.wtf` are **not**
 nodes. `*.altmempool.wtf` is wildcard DNS to Vercel: HTTPS fails the TLS handshake and HTTP answers
 `404 X-Vercel-Error: DEPLOYMENT_NOT_FOUND`, exactly like a made-up subdomain. Only the forshtat.com
