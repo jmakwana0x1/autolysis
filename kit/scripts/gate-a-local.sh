@@ -19,3 +19,13 @@ run() { (cd kit && CHAIN_ID=31337 PRIVATE_KEY=$PK0 RPC_URL=http://127.0.0.1:8547
   STAKING_REGISTRY=$REG GATE_A_POLL_MS=200 npx tsx src/gateA/run.ts); }
 echo "=== gate-a run 1"; run
 echo "=== gate-a run 2 (idempotence)"; run
+# Phase B scenes that anvil + the mock node can actually execute (crash: 12 SENDER-frame liquidations
+# emulated; uniswap-balances; reputation). attacks/replace need real VERIFY + the real mempool: unit-tested
+# in kit/test/scenes.test.ts, devnet only.
+scene() { (cd kit && CHAIN_ID=31337 PRIVATE_KEY=$PK0 RPC_URL=http://127.0.0.1:8547 ETHREX_URL=http://127.0.0.1:8547 \
+  GATE_A_POLL_MS=200 npx tsx src/scenes/run.ts "$@"); }
+if [ "${PHASE_B:-1}" = "1" ]; then
+  echo "=== scene crash";            scene crash | tail -12
+  echo "=== scene uniswap-balances"; scene uniswap-balances | tail -4
+  echo "=== reputation after";       scene reputation after | tail -2
+fi

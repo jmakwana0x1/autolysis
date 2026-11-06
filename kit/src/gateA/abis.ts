@@ -12,6 +12,11 @@ export const accountAbi = parseAbi([
   "function setStakingRegistry(address)",
   "function stake(uint32) payable",
   "function pushVerifySnapshot(uint256,uint256)",
+  "error Rejected(uint8 reason)",
+  "error RoundAlreadyUsed()",
+  "error NotUnhealthy()",
+  "error NoSnapshot()",
+  "error SnapshotRoundMismatch()",
   "event LiquidationOk(uint256 indexed positionId, uint256 debtRepaid, uint256 collateralSold, uint256 fee)",
   "event LiquidationFailed(uint256 indexed positionId, uint256 fee)",
 ]);
@@ -54,3 +59,13 @@ export const hookAbi = parseAbi([
   "function deposit(address,uint256)",
   "function depositsOf(address) view returns (uint256)",
 ]);
+
+/** ERC-6909 claims on the v4 PoolManager (id = uint160(currency)). */
+export const poolManagerAbi = parseAbi(["function balanceOf(address owner, uint256 id) view returns (uint256)"]);
+
+/** FirewallRules.Reject, by ordinal (src/libraries/FirewallRules.sol; append-only). */
+export const REJECT_NAMES = [
+  "OK", "FRAME_COUNT", "VERIFY_FRAME", "EXEC_FRAME_MODE", "EXEC_TARGET", "EXEC_SELECTOR", "EXEC_CALLDATA_LEN",
+  "POSITION_ID", "ROUND_ID", "KEY_COUNT", "KEY_VALUE", "KEY_TOP_BYTE", "SECOND_KEY", "FEE_CAP", "STATE_BUDGET",
+  "ALLOWED_SCOPE", "SENDER", "EXEC_VALUE",
+] as const;

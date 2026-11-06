@@ -6,7 +6,6 @@
   "scripts": {
     "probe": "tsx src/probes/run.ts",
     "scene": "tsx src/scenes/run.ts",
-    "e2e": "tsx src/scenes/run.ts all",
     "seed": "tsx src/seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

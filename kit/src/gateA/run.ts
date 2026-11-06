@@ -1,24 +1,12 @@
 // `just gate-a` entry point. Env: PRIVATE_KEY (devnet-only key, from .env), RPC_URL (gateway /rpc),
 // ETHREX_URL (ethrex root, for simulate), optional EXPLORER_URL, STAKING_REGISTRY, LEGACY_GAS_PRICE_WEI.
 // Writes everything to deployments/<chainId>.json and stops on the first error with its exact text.
-import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
-import { join } from "node:path";
 import type { Address, Hex } from "viem";
-import { ROOT } from "../registry.js";
 import { ENDPOINTS } from "../endpoints.js";
-import { defaultConfig, runGateA, GateAError, type Store } from "./gateA.js";
+import { defaultConfig, runGateA, GateAError } from "./gateA.js";
+import { fileStore } from "./store.js";
 import { forgeDeploy, realChainIO, realFrameIO, type IoConfig } from "./io.js";
 
-export function fileStore(chainId: number): Store {
-  const file = join(ROOT, "deployments", `${chainId}.json`);
-  return {
-    load: () => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { chainId, contracts: {} }),
-    save: (s) => {
-      writeFileSync(`${file}.tmp`, JSON.stringify(s, null, 2) + "\n");
-      renameSync(`${file}.tmp`, file);
-    },
-  };
-}
 
 async function main() {
   const pk = process.env.PRIVATE_KEY as Hex | undefined;

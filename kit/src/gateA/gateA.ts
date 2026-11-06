@@ -10,7 +10,7 @@ import { txHash, type FrameTx } from "@forshtat/hegota-support/tx";
 import { canonicalLiquidationTx, nonceKeyFor } from "../frameTx.js";
 import { choosePath, rawFrameTx, summarize, type SimSummary } from "../sim.js";
 import type { ChainIO, DeployFn, FrameIO, FrameReceipt } from "./io.js";
-import { accountAbi, erc20Abi, feedAbi, hookAbi, marketAbi, registryAbi, wethAbi } from "./abis.js";
+import { accountAbi, erc20Abi, feedAbi, hookAbi, marketAbi, poolManagerAbi, registryAbi, wethAbi } from "./abis.js";
 
 export const DEVNET_REGISTRY: Address = "0xD51c04d7A0B01124E84DE152F4e56d9eeCB22D2F";
 export const NONCE_MANAGER = profile.predeploys!.NONCE_MANAGER as Address;
@@ -400,7 +400,7 @@ export function receiptOk(r: FrameReceipt | null | undefined): boolean {
   return r.status === "0x1" && (r.frameReceipts ?? []).every((f) => f.status === "0x1");
 }
 
-async function waitReceipt(frame: FrameIO, hash: Hex, cfg: GateAConfig, sleep: (ms: number) => Promise<void>) {
+export async function waitReceipt(frame: FrameIO, hash: Hex, cfg: GateAConfig, sleep: (ms: number) => Promise<void>) {
   const deadline = Date.now() + cfg.receiptTimeoutMs;
   for (;;) {
     const r = await frame.receipt(hash);
@@ -434,7 +434,7 @@ export function findEntry(listing: unknown, addr: Address): unknown {
   return hit ?? { listed: false, raw: listing };
 }
 
-async function balances(chain: ChainIO, c: Record<string, Address>, positionId: bigint) {
+export async function balances(chain: ChainIO, c: Record<string, Address>, positionId: bigint) {
   const [owner, collateral, debt, liquidations] = await chain.read<[Address, bigint, bigint, bigint]>(
     c.AutolysisMarket, marketAbi, "positions", [positionId],
   );
@@ -451,5 +451,9 @@ async function balances(chain: ChainIO, c: Record<string, Address>, positionId: 
     hookWeth: await bal(c.WETH, c.BackstopHook),
     poolManagerUsdc: await bal(c.USDC, c.PoolManager),
     poolManagerWeth: await bal(c.WETH, c.PoolManager),
+    hookClaimsUsdc: await chain.read<bigint>(c.PoolManager, poolManagerAbi, "balanceOf", [c.BackstopHook, BigInt(c.USDC)]),
+    hookClaimsWeth: await chain.read<bigint>(c.PoolManager, poolManagerAbi, "balanceOf", [c.BackstopHook, BigInt(c.WETH)]),
+    hookOwnerWeth: await bal(c.WETH, chain.deployer), // tier-2 collateral goes to the hook owner (the deployer)
+    hookOwnerUsdc: await bal(c.USDC, chain.deployer),
   };
 }

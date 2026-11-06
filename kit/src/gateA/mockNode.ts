@@ -35,6 +35,9 @@ const call = async (to: Hex, fn: "storageOnlyVerify" | "env") => {
 };
 
 const emulated = new Map<string, string>(); // frame hash -> anvil hash
+const rep = new Map<string, { opsSeen: number; opsIncluded: number }>(); // sender -> mock counters
+const included = new Set<string>();
+const senderOf = new Map<string, string>();
 const frameReceipt = (r: any) => ({ ...r, mock: true, frameReceipts: [{ status: "0x1", mock: true }, { status: r.status }] });
 
 const handlers: Record<string, (p: any[]) => Promise<unknown>> = {
@@ -67,19 +70,29 @@ const handlers: Record<string, (p: any[]) => Promise<unknown>> = {
     await up("anvil_stopImpersonatingAccount", [sender]);
     const fh = keccak256(toHex(JSON.stringify(wire)));
     emulated.set(fh, h);
+    const r = rep.get(sender.toLowerCase()) ?? { opsSeen: 0, opsIncluded: 0 };
+    r.opsSeen++;
+    rep.set(sender.toLowerCase(), r);
+    senderOf.set(fh, sender.toLowerCase());
     return fh;
   },
   async eth_getTransactionReceipt([hash]) {
     const h = emulated.get(hash);
     if (!h) return up("eth_getTransactionReceipt", [hash]);
     const r = await up("eth_getTransactionReceipt", [h]);
+    if (r && !included.has(hash)) {
+      included.add(hash);
+      const c = rep.get(senderOf.get(hash)!);
+      if (c) c.opsIncluded++;
+    }
     return r ? frameReceipt(r) : null;
   },
   async skandha_frameTransactionStatus([hash]) {
     return { mock: true, hash, status: emulated.has(hash) ? "included" : "unknown" };
   },
   async skandha_explorer_listReputation() {
-    return { mock: true, entries: [] };
+    const items = [...rep.entries()].map(([address, c]) => ({ address, ...c, status: "ok", isStaked: true, mock: true }));
+    return { mock: true, items };
   },
 };
 

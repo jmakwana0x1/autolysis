@@ -55,12 +55,22 @@ probe:
     cd kit && npm run --silent probe
     just gen
 
-# Layer 3: one devnet scene through the kit
+# Phase B, one devnet scene: crash | replace | attacks | uniswap-balances (needs a passed `just gate-a`)
 scene name:
-    cd kit && npm run --silent scene -- {{name}}
+    cd kit && CHAIN_ID=${CHAIN_ID:-1337} npx tsx src/scenes/run.ts {{name}}
 
+# Snapshot skandha_explorer_listReputation for the account (label e.g. before/after) into the EXO-010 data
+reputation label="manual":
+    cd kit && CHAIN_ID=${CHAIN_ID:-1337} npx tsx src/scenes/run.ts reputation {{label}}
+
+# Phase B end to end on the devnet
 e2e:
-    cd kit && npm run --silent e2e
+    just reputation before
+    just scene crash
+    just scene replace
+    just scene attacks
+    just scene uniswap-balances
+    just reputation after
 
 # Run the EXO-010 reputation simulator and refresh the Lab chart data (no devnet needed)
 sim:
