@@ -21,6 +21,10 @@ build:
 aqua-build:
     FOUNDRY_PROFILE=aqua forge build
 
+# C2 (on fork): the C1 flow against the official Aqua on a Unichain mainnet fork; trace saved to deployments/
+fork-c2 rpc="https://mainnet.unichain.org": aqua-build
+    UNICHAIN_RPC_URL={{rpc}} forge test --match-path test/fork/C2_OfficialAqua.t.sol -vvvv > deployments/c2-fork-trace.txt 2>&1; status=$?; grep -E "PASS|FAIL|Suite result" deployments/c2-fork-trace.txt; exit $status
+
 # Layer 1: unit + fuzz (10,000 runs per property), every commit
 test: aqua-build
     forge test --no-match-path "test/invariant/*"

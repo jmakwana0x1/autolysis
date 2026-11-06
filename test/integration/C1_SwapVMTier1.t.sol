@@ -45,8 +45,9 @@ interface IOrderBuilder {
 /// artifacts) -> REAL Aqua. The maker ships [LiquidationGate][Extruction -> LiquidationPricer(venue)][Salt]
 /// holding USDC; the hook fills as taker at the cited-round price. Exit: maker wallet USDC down and
 /// WETH (collateral) up; a stranger's fill reverts LiquidationGateClosed.
-/// Needs `just aqua-build` first (`just test` does it).
-contract C1SwapVMTier1Test is Test, Deployers {
+/// Needs `just aqua-build` first (`just test` does it). C2 (test/fork/C2_OfficialAqua.t.sol) runs the same
+/// flow on a Unichain fork against the official Aqua registry.
+abstract contract SwapVMTier1Base is Test, Deployers {
     uint160 constant FLAGS =
         uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
     bytes4 constant GATE_CLOSED = bytes4(keccak256("LiquidationGateClosed()"));
@@ -74,7 +75,14 @@ contract C1SwapVMTier1Test is Test, Deployers {
     address stranger = address(0x5757);
     uint256 posId;
 
+    /// Which Aqua to fill through. C1: a fresh one from the aqua-fork artifacts. C2: the official one.
+    function _aqua() internal virtual returns (address);
+
+    /// Runs before anything is deployed (C2 selects the fork here).
+    function _beforeSetUp() internal virtual {}
+
     function setUp() public {
+        _beforeSetUp();
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
         col = MockERC20(Currency.unwrap(currency0));
@@ -101,7 +109,7 @@ contract C1SwapVMTier1Test is Test, Deployers {
         market.setVenue(ISwapVenue(address(venue)));
 
         // The 1inch side, from the aqua-profile artifacts (solc 0.8.30, via-IR).
-        aqua = IAquaShip(vm.deployCode("out-aqua/Aqua.sol/Aqua.json"));
+        aqua = IAquaShip(_aqua());
         pricer = vm.deployCode("out-aqua/LiquidationPricer.sol/LiquidationPricer.json");
         builder = IOrderBuilder(vm.deployCode("out-aqua/OrderBuilder.sol/OrderBuilder.json"));
         swapVM = ISwapVMRouter(
@@ -253,5 +261,12 @@ contract C1SwapVMTier1Test is Test, Deployers {
                 (t1,, t3) = abi.decode(logs[i].data, (uint256, uint256, uint256));
             }
         }
+    }
+}
+
+/// C1, local test: a fresh Aqua deployed from the aqua-fork artifacts.
+contract C1SwapVMTier1Test is SwapVMTier1Base {
+    function _aqua() internal override returns (address) {
+        return vm.deployCode("out-aqua/Aqua.sol/Aqua.json");
     }
 }
