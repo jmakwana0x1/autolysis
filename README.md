@@ -155,6 +155,47 @@ included, while the canonical mempool rejected the same transaction.
   sent through the gateway sidecar (manual bundling), then re-sent to the miner and dropped after 4
   relays. The successful run used fresh entities, sent through the miner sidecar, and cited a fresh round.
 
+**Phase B crash on the devnet: 11 of 12 liquidations included, canonical 0 of 12.** Twelve positions
+(0.25 ETH collateral each) became liquidatable in one in-band −10% round. Each liquidation went to the
+canonical mempool and to the alt mempool:
+
+- **Pre-check, before any send:** all 12 simulated with VERIFY at 94,168 gas (+100 for the signature,
+  within the frame's 99,900 limit). The account held 0.0647 ETH against 0.0543 ETH needed for 12 × the
+  max cost.
+- **Canonical mempool:** rejected all 12, with the same `StorageReadNonSender` text as above.
+- **Alt mempool (miner sidecar):** 11 of 12 were included, all `LiquidationOk`, 4 / 4 / 3 per block. That
+  is one account on 11 separate nonce keys. Each was verified on ethrex (type `0x6` from the account, both
+  frames `0x1`) and in the market (`liquidationCount 1`, HF 0.960 → 1.055).
+
+| Position | Block | Liquidation |
+| --- | --- | --- |
+| 4 | 3576 | [`0xf502d8c4…f94d`](https://explorer.altmempool.wtf/tx/0xf502d8c4a655e1b9538505a666f87c583ebfa11e4a7eda310d66db667c08f94d?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 5 | 3576 | [`0xda00b653…abf5`](https://explorer.altmempool.wtf/tx/0xda00b653700572f26c52cc6ebfa95f5fbf32d4f71596cdf4ffdfc000a66aabf5?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 6 | 3576 | [`0x07dac60e…0ea4`](https://explorer.altmempool.wtf/tx/0x07dac60e5491cb717d7a1b8ab3c24d799fc39fa4e4479d52a6fe117725070ea4?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 7 | 3576 | [`0x4c1d4bf0…5efb`](https://explorer.altmempool.wtf/tx/0x4c1d4bf0bbd28034b80af25c94fa1ed87b7a3458ba448f22dab45cfa53745efb?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 8 | 3579 | [`0x712c65e3…d86b`](https://explorer.altmempool.wtf/tx/0x712c65e368b77c475a70dd123a8c17ae6094df912db171d4ce1806135409d86b?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 9 | 3579 | [`0xe2afdcd1…a69d`](https://explorer.altmempool.wtf/tx/0xe2afdcd14192fb109f2d34f2c4dc4be8f3a87eb5aa538e7b4120de66e626a69d?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 10 | 3579 | [`0x660f5538…1621`](https://explorer.altmempool.wtf/tx/0x660f55382737687890c9313da685e746fab176487d8421e3b629f80aed8b1621?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 11 | 3579 | [`0x96cc847e…062a`](https://explorer.altmempool.wtf/tx/0x96cc847ee78114944597c3625db9099914304c1c1a84dd1c5c25ae05dfac062a?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 12 | 3581 | [`0x9e7a6ec7…6dc5`](https://explorer.altmempool.wtf/tx/0x9e7a6ec74dc8e082c4057867c80e784f50737b2612f4bc57eb971897c78b6dc5?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 13 | 3581 | [`0x96a9f498…c83d`](https://explorer.altmempool.wtf/tx/0x96a9f4982f8b9e3b409010b7bcba46051737cfbac74283a8b4e1f83c1b69c83d?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+| 14 | 3581 | [`0x9d2f1fc7…4306`](https://explorer.altmempool.wtf/tx/0x9d2f1fc7ca561246fafc85186861bc5ada9c4ccc534f88f1806d9a19013a4306?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc) |
+
+- **Position 3 is the miss.** Its `eth_sendFrameTransaction` request got no response (`fetch failed`),
+  while the devnet RPC was also timing out on plain reads. Its transaction
+  `0x9498bf10a71f40270e7804f475b3123452c5853ae85e8486278f51e024522fa3` is not known to the miner or the
+  gateway, and the position is untouched on chain (nonce 0, no attempt, HF 0.96). It was never received.
+  Nothing was half-sent.
+- **What we learned on the devnet:**
+  1. Send frame transactions to the **miner** sidecar (auto-bundling). The gateway (manual bundling)
+     admitted our first liquidation and never relayed it.
+  2. Real VERIFY gas is about 22k above the mock (94,168 vs 71,822).
+  3. A round older than one hour can no longer be liquidated against, so gate-a posts a fresh round right
+     before sending.
+  4. The public devnet RPC drops requests under load, so sends need a transport-level retry (identical
+     bytes, same hash, so it can't double-liquidate).
+
+
 ## Sponsor tracks: where to look
 
 | Track | What | Where (file:line) | Proof | Label |
@@ -231,8 +272,9 @@ Not in CI, by design: anything that needs devnet ETH or a private key (`just gat
 
 ## Limitations (honest list)
 
-- **On the devnet, only Gate A has run.** Phase B (`just e2e`: crash ×12, replacement, attacks) is
-  written and unit-tested but not yet run on chain.
+- **On the devnet, Gate A and the crash scene have run** (11 of 12 included; the 12th send was lost in
+  transport). Replacement, attacks and the reputation/Uniswap-balance scenes are written and unit-tested
+  but not yet run on chain.
 - **VERIFY gas is mock-measured.** 71,822 (outside reads) / 50,414 (storage-only) on a cost-realistic mock.
   `just gate-a` measures both with `ethrex_simulateFrameTransaction` and picks the path by the rule.
 - **The storage-only snapshot is a separate transaction** (`pushVerifySnapshot`), not yet written by the
@@ -249,12 +291,6 @@ Not in CI, by design: anything that needs devnet ETH or a private key (`just gat
 - **The net-saved figure is a model**: a 5% bonus against haircut plus gas, one collateral, no MEV.
 - **D2 (vault shares for house deposits) is not built.** The house tier is a single owner's deposits.
 - **The dashboard's server is local-only** (127.0.0.1) and uses the operator's `.env` key for the crash button.
-
-## Repository history
-
-This repository was restored after the original was accidentally deleted. The commits were replayed in
-their original order, so their timestamps show the restore rather than when each change was first
-written.
 
 ## More
 
