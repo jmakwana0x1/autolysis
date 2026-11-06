@@ -64,8 +64,28 @@
   },
   "probeCell": null,
   "selectorFallback": false,
-  "verifyGas": 129389,
+  "verifyGas": 94168,
   "validationGasLimit": 1000000,
   "rawSimulateResponse": null,
-  "signatureForm": null
+  "signatureForm": null,
+  "verifyGasMeasured": {
+    "source": "ethrex_simulateFrameTransaction on https://altmempool.forshtat.com (gate-a, chain 1337)",
+    "measuredAt": "2026-11-06",
+    "outsideReads": {
+      "verifyGasUsed": 94168,
+      "executeGasUsed": 363877,
+      "canonicalViolation": "StorageReadNonSender"
+    },
+    "storageOnly": {
+      "verifyGasUsed": 71892,
+      "executeGasUsed": 387677,
+      "canonicalViolation": null
+    },
+    "chosen": "outside-reads",
+    "rule": "VERIFY gasUsed + 100 <= 97000, outside reads preferred",
+    "mockAtTheTime": {
+      "outsideReads": 71822,
+      "storageOnly": 50414
+    }
+  }
 }
