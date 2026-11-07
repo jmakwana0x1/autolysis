@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Autolysis pitch</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&amp;display=swap">
+<style>
+body { margin: 0; }
+.root { --bg: #F5F4EF; --surface: #FFFFFF; --sunk: #ECEAE2; --ink: #17181B; --muted: #55575E; --line: #D6D3C9; --strong: #17181B; --on-strong: #F5F4EF; --auth: #2D4E9E; --auth-ink: #2D4E9E; --auth-on: #FFFFFF; --exec: #D2691E; --exec-ink: #9E4A0C; --exec-on: #17181B; --fund: #8FCFBF; --fund-ink: #1D6B5A; --fund-on: #17181B; background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 16px; line-height: 1.55; min-height: 100vh; position: relative; outline: none; }
+.root.dark { --bg: #111215; --surface: #1A1C20; --sunk: #24262B; --ink: #ECEAE4; --muted: #A6A59E; --line: #33363C; --strong: #ECEAE4; --on-strong: #111215; --auth: #4A69C2; --auth-ink: #A9BDF4; --auth-on: #FFFFFF; --exec: #D2691E; --exec-ink: #F0A867; --exec-on: #111215; --fund: #8FCFBF; --fund-ink: #8FCFBF; --fund-on: #111215; }
+@media (prefers-color-scheme: dark) {
+  .root.auto { --bg: #111215; --surface: #1A1C20; --sunk: #24262B; --ink: #ECEAE4; --muted: #A6A59E; --line: #33363C; --strong: #ECEAE4; --on-strong: #111215; --auth: #4A69C2; --auth-ink: #A9BDF4; --auth-on: #FFFFFF; --exec: #D2691E; --exec-ink: #F0A867; --exec-on: #111215; --fund: #8FCFBF; --fund-ink: #8FCFBF; --fund-on: #111215; }
+}
+.root a { color: var(--auth-ink); text-underline-offset: 3px; }
+.root a:hover { color: var(--ink); }
+.serif { font-family: "Newsreader", Georgia, serif; }
+.mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.nav { position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
+.navlinks { display: flex; gap: .15em; overflow-x: auto; white-space: nowrap; min-width: 0; flex: 1 1 auto; scrollbar-width: none; }
+.root .navlinks a { color: var(--muted); text-decoration: none; padding: .55em .6em; border-radius: 6px; font-size: .875em; }
+.root .navlinks a:hover { color: var(--ink); background: var(--sunk); }
+.btn { display: inline-flex; align-items: center; gap: .5em; min-height: 44px; padding: 0 1em; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: .9375em; font-weight: 500; text-decoration: none; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
+.root a.btn { color: var(--ink); text-decoration: none; }
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
+.root a.btn.primary { color: var(--on-strong); }
+.btn.is-on { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
+.chip { display: inline-flex; align-items: center; gap: .6em; min-height: 44px; padding: .35em .85em .35em .4em; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .9375em; box-sizing: border-box; }
+.root a.chip { color: var(--ink); text-decoration: none; }
+.root a.chip:hover { border-color: var(--ink); }
+.tag { display: inline-flex; align-items: center; gap: .35em; padding: .2em .55em; border-radius: 4px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .72em; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; line-height: 1.4; }
+.tag.auth { background: var(--auth); color: var(--auth-on); }
+.tag.exec { background: var(--exec); color: var(--exec-on); }
+.tag.fund { background: var(--fund); color: var(--fund-on); }
+.tag.all { background: var(--sunk); color: var(--ink); }
+.pill { display: inline-flex; align-items: center; gap: .4em; padding: .25em .7em; border-radius: 999px; font-size: .78em; font-weight: 600; white-space: nowrap; border: 1px solid var(--line); color: var(--ink); background: var(--surface); line-height: 1.4; }
+.pill.incl { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
+.pill.rej { border: 1.5px solid var(--ink); background: transparent; }
+.pill.tbd { border: 1.5px dashed var(--muted); color: var(--muted); background: transparent; }
+.pill.est { border: 1.5px dashed var(--ink); background: transparent; }
+.eyebrow { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8125em; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.slide { scroll-margin-top: 3.75em; border-top: 1px solid var(--line); box-sizing: border-box; }
+.wrap { max-width: 72em; margin: 0 auto; padding: 5em 1em; box-sizing: border-box; width: 100%; }
+.h2 { font-family: "Newsreader", Georgia, serif; font-weight: 500; font-size: 2.75em; line-height: 1.08; letter-spacing: -.012em; margin: .35em 0 .45em; max-width: 22em; }
+.lead { font-size: 1.2em; line-height: 1.5; color: var(--muted); max-width: 40em; margin: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-sizing: border-box; }
+.num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: -.02em; line-height: 1; }
+.tbox { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table.t { width: 100%; border-collapse: collapse; font-size: .95em; }
+table.t th { text-align: left; font-weight: 600; font-size: .75em; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: .9em 1.1em; border-bottom: 1px solid var(--line); }
+table.t td { padding: .9em 1.1em; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t tr:last-child td { border-bottom: 0; }
+.hash { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .85em; background: var(--sunk); padding: .2em .45em; border-radius: 4px; white-space: nowrap; color: var(--ink); }
+.copy { display: inline-flex; align-items: center; gap: .35em; min-height: 44px; padding: 0 .55em; border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: .8em; cursor: pointer; border-radius: 6px; }
+.copy:hover { color: var(--ink); border-color: var(--line); }
+.root a.ext { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; color: var(--muted); border-radius: 6px; }
+.root a.ext:hover { color: var(--ink); background: var(--sunk); }
+.layer { --accent: var(--line); position: relative; transition: box-shadow .35s ease, transform .35s ease; }
+.layer.auth { --accent: var(--auth); }
+.layer.exec { --accent: var(--exec); }
+.layer.fund { --accent: var(--fund); }
+.layer .band { height: 8px; background: var(--accent); border-radius: 11px 11px 0 0; }
+.layer.is-on { box-shadow: 0 0 0 2px var(--accent), 0 12px 32px rgba(0,0,0,.08); transform: translateY(-3px); }
+.layer .now { display: none; }
+.layer.is-on .now { display: inline-flex; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .6em; }
+.step { width: 100%; min-height: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: .45em; padding: .85em .9em; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; box-sizing: border-box; transition: border-color .3s, background .3s; }
+.step:hover { border-color: var(--ink); }
+.step .node { display: inline-flex; align-items: center; justify-content: center; width: 1.9em; height: 1.9em; border-radius: 50%; border: 1.5px solid var(--muted); font-size: .85em; color: var(--muted); }
+.step .sname { font-weight: 600; font-size: 1em; }
+.step.is-done .node { background: var(--sunk); border-color: var(--ink); color: var(--ink); }
+.step.is-active { border: 2px solid var(--ink); padding: calc(.85em - 1px) calc(.9em - 1px); }
+.step.is-active .node { background: var(--strong); border-color: var(--strong); color: var(--on-strong); animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(120,120,120,.45); } 100% { box-shadow: 0 0 0 10px rgba(120,120,120,0); } }
+.rail { height: 4px; background: var(--sunk); border-radius: 2px; overflow: hidden; }
+.rail-fill { height: 100%; background: var(--strong); transition: width .6s ease; }
+.bar { height: 12px; background: var(--sunk); border-radius: 3px; overflow: hidden; display: flex; }
+.bar-fill { height: 100%; background: var(--muted); transition: width .25s ease, margin-left .25s ease; }
+.bar-fill.ours { background: var(--strong); }
+.gauge { position: relative; height: 22px; background: var(--sunk); border-radius: 4px; }
+.gauge-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--auth); border-radius: 4px 0 0 4px; }
+.gauge-cap { position: absolute; right: 0; top: -6px; bottom: -6px; width: 2px; background: var(--ink); }
+.prow { display: grid; grid-template-columns: 8.5em minmax(0, 1fr) 12.5em 17.5em; gap: 1.1em; padding: 1.1em 1.25em; border-bottom: 1px solid var(--line); align-items: start; }
+.prow:last-child { border-bottom: 0; }
+.prow.head { padding-top: .85em; padding-bottom: .85em; font-size: .75em; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.field { width: 100%; min-height: 48px; box-sizing: border-box; padding: 0 .85em; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font-size: 1.25em; }
+.field:focus, .range:focus-visible, .btn:focus-visible, .step:focus-visible, .copy:focus-visible, .chip:focus-visible { outline: 2px solid var(--auth); outline-offset: 2px; }
+.range { width: 100%; min-height: 44px; accent-color: var(--ink); }
+details.faq { border-bottom: 1px solid var(--line); }
+details.faq summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: .9em; padding: 1.1em .25em; min-height: 44px; box-sizing: border-box; font-weight: 600; font-size: 1.08em; }
+details.faq summary::-webkit-details-marker { display: none; }
+details.faq summary .pm { margin-left: auto; font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); font-weight: 500; }
+details.faq summary .pm::before { content: "+"; }
+details.faq[open] summary .pm::before { content: "\2212"; }
+details.faq .ans { padding: 0 .25em 1.3em; color: var(--ink); max-width: 46em; }
+details.faq .ans p { margin: 0 0 .7em; }
+.present-only { display: none !important; }
+.root.present .present-only { display: inline-flex !important; }
+.root.present { height: 100vh; overflow-y: auto; scroll-snap-type: y proximity; font-size: clamp(18px, 1.3vw, 30px); scroll-padding-top: 3.75em; }
+.root.present .slide { min-height: calc(100% - 3.75em); display: flex; flex-direction: column; justify-content: center; scroll-snap-align: start; }
+@media (max-width: 900px) {
+  .prow { grid-template-columns: minmax(0, 1fr); gap: .6em; }
+  .prow.head { display: none; }
+}
+@media (max-width: 760px) {
+  .h2 { font-size: 2.05em; }
+  .hero-title { font-size: 2.75em !important; }
+  .navlinks { order: 3; flex-basis: 100%; }
+  .steps { grid-template-columns: minmax(0, 1fr); }
+  .step { flex-direction: row; align-items: center; }
+  .wrap { padding-top: 3.5em; padding-bottom: 3.5em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .root * { animation: none !important; transition: none !important; }
+}
+</style>
+</helmet>
+<div class="root {{ rootCls }}" tabIndex="0" onKeyDown="{{ onKey }}" onScroll="{{ onScroll }}">
+
+<nav class="nav" aria-label="Sections">
+<div style="max-width: 72em; margin: 0 auto; padding: .5em 1em; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: .5em 1em">
+<a href="#top" style="font-family: 'Newsreader', Georgia, serif; font-weight: 600; font-size: 1.2em; text-decoration: none; color: var(--ink); padding: .3em 0">Autolysis</a>
+<div class="navlinks">
+<a href="#problem">Problem</a>
+<a href="#insight">Insight</a>
+<a href="#how">How it works</a>
+<a href="#mempool">Mempool</a>
+<a href="#cost">Cost</a>
+<a href="#proof">Proof</a>
+<a href="#prior-art">Prior art</a>
+<a href="#faq">FAQ</a>
+<a href="#limits">Limits</a>
+</div>
+<div style="display: flex; align-items: center; gap: .5em; margin-left: auto">
+<span class="present-only mono" style="font-size: .85em; color: var(--muted); padding: 0 .25em" aria-live="polite">{{ slideLabel }}</span>
+<button type="button" class="btn present-only" onClick="{{ onPrevSlide }}" aria-label="Previous section" style="padding: 0 .7em"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg></button>
+<button type="button" class="btn present-only" onClick="{{ onNextSlide }}" aria-label="Next section" style="padding: 0 .7em"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<button type="button" class="btn" onClick="{{ onTheme }}" aria-label="Change color theme">{{ themeLabel }}</button>
+<button type="button" class="btn {{ presentCls }}" onClick="{{ onPresent }}" aria-pressed="{{ presentPressed }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"></rect><path d="M12 16v4M8 20h8"></path></svg>{{ presentLabel }}</button>
+</div>
+</div>
+</nav>
+
+<section id="top" class="slide" style="border-top: 0">
+<div class="wrap" style="padding-top: 5.5em; padding-bottom: 5em">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 27em), 1fr)); gap: 3em; align-items: center">
+<div style="display: flex; flex-direction: column; gap: 1.6em; min-width: 0">
+<div class="eyebrow">ETHGlobal Mumbai 2026 · Hackathon project</div>
+<h1 class="serif hero-title" style="margin: 0; font-size: 4.4em; line-height: 1.0; font-weight: 500; letter-spacing: -.022em">Autolysis: self-liquidating loans</h1>
+<p style="margin: 0; font-size: 1.4em; line-height: 1.42; color: var(--muted); max-width: 26em">The loan pays for its own liquidation. No privileged keeper, no signature, no 5% liquidator bonus.</p>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: .55em">
+<a class="chip" href="#proof"><span class="tag auth">Authorize</span>Included on the EF devnet · block 2865</a>
+<a class="chip" href="#proof"><span class="tag exec">Execute</span>Uniswap v4 hook on the official PoolManager</a>
+<a class="chip" href="#proof"><span class="tag fund">Fund</span>Real 1inch Aqua fill on a Unichain fork</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: .6em">
+<a class="btn primary" href="https://github.com/jmakwana0x1/autolysis" target="_blank" rel="noopener noreferrer">GitHub repo<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></a>
+<a class="btn" href="https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc" target="_blank" rel="noopener noreferrer">Devnet transaction<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></a>
+</div>
+<p style="margin: 0; font-size: .875em; color: var(--muted); max-width: 34em">Three layers, three sponsor stacks: Ethereum Foundation (frame transactions, alternative mempool), Uniswap Foundation (v4 hooks) and 1inch (Aqua, SwapVM). Press Present, then use the arrow keys; Esc exits.</p>
+</div>
+<div class="card" style="padding: 1.6em; display: flex; flex-direction: column; gap: 1.2em; min-width: 0">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .5em; justify-content: space-between">
+<span class="eyebrow">One self-liquidation, block 2865</span>
+<span class="pill incl"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>Included</span>
+</div>
+<div>
+<div style="font-size: .85em; color: var(--muted); margin-bottom: .4em">Health factor</div>
+<div style="display: flex; align-items: baseline; gap: .5em; flex-wrap: wrap">
+<span class="num" style="font-size: 3.4em; color: var(--muted)">0.960</span>
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--muted)"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+<span class="num" style="font-size: 3.4em">1.055</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1em; border-top: 1px solid var(--line); padding-top: 1.1em">
+<div><div style="font-size: .8em; color: var(--muted)">Debt (USDC)</div><div class="mono" style="font-size: 1.05em">0.1500 → 0.0936</div></div>
+<div><div style="font-size: .8em; color: var(--muted)">Collateral (WETH)</div><div class="mono" style="font-size: 1.05em">0.1000 → 0.0686</div></div>
+<div><div style="font-size: .8em; color: var(--muted)">Gas billed from collateral</div><div class="mono" style="font-size: 1.05em">0.0000939 WETH</div></div>
+<div><div style="font-size: .8em; color: var(--muted)">Signatures from a keeper</div><div class="mono" style="font-size: 1.05em">none</div></div>
+</div>
+<a href="#proof" style="font-size: .875em">Verify it yourself in section 7</a>
+</div>
+</div>
+</div>
+</section>
+
+<section id="problem" class="slide">
+<div class="wrap">
+<div class="eyebrow">02 · The problem</div>
+<h2 class="h2">Liquidation is DeFi's most important safety mechanism and its most extractive one.</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15em), 1fr)); gap: 1em; margin-top: 2.2em">
+<div class="card" style="padding: 1.5em; display: flex; flex-direction: column; gap: .7em">
+<span class="num" style="font-size: 2.9em">310,000+</span>
+<span>liquidations processed by Aave, worth <span class="mono">~$4.65B</span></span>
+<span style="font-size: .8em; color: var(--muted); margin-top: auto">Aave Labs, Feb 2026 · <span class="pill tbd">[TBD link]</span></span>
+</div>
+<div class="card" style="padding: 1.5em; display: flex; flex-direction: column; gap: .7em">
+<span class="num" style="font-size: 2.9em">~$429M</span>
+<span>liquidated by Aave in the crash week of Jan 31 – Feb 5, 2026, across <span class="mono">~12,500</span> transactions</span>
+<span style="font-size: .8em; color: var(--muted); margin-top: auto">Aave Labs, Feb 2026 · <span class="pill tbd">[TBD link]</span></span>
+</div>
+<div class="card" style="padding: 1.5em; display: flex; flex-direction: column; gap: .7em">
+<span class="num" style="font-size: 2.9em">~5%</span>
+<span>of the debt paid as a bonus to outside bots, at the worst moment for the borrower</span>
+</div>
+<div class="card" style="padding: 1.5em; display: flex; flex-direction: column; gap: .7em">
+<span class="num" style="font-size: 2.9em">74%</span>
+<span>of fixed-spread liquidations paid above-average transaction fees: evidence of gas bidding wars</span>
+<span style="font-size: .8em; color: var(--muted); margin-top: auto"><a href="https://arxiv.org/abs/2106.06389" target="_blank" rel="noopener noreferrer">Qin et al., 2021</a></span>
+</div>
+</div>
+<blockquote style="margin: 2.4em 0 0; padding: 0 0 0 1.2em; border-left: 3px solid var(--ink); max-width: 44em">
+<p class="serif" style="margin: 0; font-size: 1.65em; line-height: 1.3">Existing designs “sell excessive amounts of discounted collateral at the borrowers' expense.”</p>
+<footer style="margin-top: .6em; font-size: .875em; color: var(--muted)"><a href="https://arxiv.org/abs/2106.06389" target="_blank" rel="noopener noreferrer">Qin et al., “An Empirical Study of DeFi Liquidations”, 2021</a></footer>
+</blockquote>
+</div>
+</section>
+
+<section id="insight" class="slide">
+<div class="wrap">
+<div class="eyebrow">03 · The insight</div>
+<h2 class="h2">“Liquidators were a workaround for loans that couldn't act on their own.”</h2>
+<p class="lead">A liquidator does six jobs. Autolysis gives each one to the market itself, or to someone already paid for it.</p>
+<div class="tbox" style="margin-top: 2em">
+<table class="t">
+<thead><tr><th style="width: 3em">#</th><th style="width: 30%">Liquidator's job</th><th>What replaces it in Autolysis</th></tr></thead>
+<tbody>
+<tr><td class="mono" style="color: var(--muted)">1</td><td style="font-weight: 600">Watch positions</td><td>Anyone can broadcast; it costs nothing, because the account pays gas.</td></tr>
+<tr><td class="mono" style="color: var(--muted)">2</td><td style="font-weight: 600">Sign and send</td><td>No key; the account's VERIFY frame is the authorization.</td></tr>
+<tr><td class="mono" style="color: var(--muted)">3</td><td style="font-weight: 600">Bring capital</td><td>Not needed; the market sells collateral it already holds.</td></tr>
+<tr><td class="mono" style="color: var(--muted)">4</td><td style="font-weight: 600">Pay gas</td><td>Prefunded ETH tank, refilled from collateral, capped at <span class="mono">0.3%</span> of what's sold.</td></tr>
+<tr><td class="mono" style="color: var(--muted)">5</td><td style="font-weight: 600">Hold collateral and price risk</td><td>Aqua makers and a backstop buy at the oracle price for a spread.</td></tr>
+<tr><td class="mono" style="color: var(--muted)">6</td><td style="font-weight: 600">Act fast</td><td>Liquidatable from <span class="mono">HF &lt; 1</span>; one nonce key per position, so many can be pending at once.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+
+<section id="how" class="slide">
+<div class="wrap">
+<div class="eyebrow">04 · How it works</div>
+<h2 class="h2">Three layers, each owned by one sponsor.</h2>
+<p class="lead">Step through one liquidation. The active layer lights up below.</p>
+
+<div style="margin-top: 2em; display: flex; flex-direction: column; gap: 1em">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .6em">
+<button type="button" class="btn primary" onClick="{{ onPlay }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M7 4l13 8-13 8z"></path></svg>{{ playLabel }}</button>
+<button type="button" class="btn" onClick="{{ onStepPrev }}" aria-label="Previous step">Back</button>
+<button type="button" class="btn" onClick="{{ onStepNext }}" aria-label="Next step">Next step</button>
+<span class="mono" style="font-size: .85em; color: var(--muted); margin-left: auto">Transaction lifecycle</span>
+</div>
+<div class="rail" aria-hidden="true"><div class="rail-fill" style="width: {{ railW }}"></div></div>
+<ol class="steps">
+<sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+<li><button type="button" class="step {{ s.cls }}" onClick="{{ s.pick }}" aria-current="{{ s.current }}"><span class="node mono">{{ s.n }}</span><span class="sname">{{ s.name }}</span><span class="tag {{ s.key }}">{{ s.layer }}</span></button></li>
+</sc-for>
+</ol>
+<div class="card" style="padding: 1.2em 1.4em; display: flex; flex-direction: column; gap: .5em" aria-live="polite">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .6em"><span class="tag {{ cur.key }}">{{ cur.layer }}</span><span style="font-weight: 600">Step {{ cur.n }} · {{ cur.name }}</span></div>
+<p style="margin: 0; max-width: 52em">{{ cur.detail }}</p>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19em), 1fr)); gap: 1.1em; margin-top: 1.8em; align-items: stretch">
+
+<div class="card layer auth {{ hl.auth }}" style="overflow: hidden; display: flex; flex-direction: column">
+<div class="band"></div>
+<div style="padding: 1.4em; display: flex; flex-direction: column; gap: 1em; flex: 1">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .5em"><span class="tag auth">1 · Authorize</span><span class="pill now">Active</span></div>
+<div>
+<div style="font-weight: 600; font-size: 1.15em">Ethereum Foundation</div>
+<div style="font-size: .875em; color: var(--muted)">EIP-8141 frame transactions + ERC-8421 alternative mempool</div>
+</div>
+<p style="margin: 0">The market's contract account is the sender and gas payer.</p>
+<div style="display: flex; flex-direction: column; gap: .5em">
+<div style="border: 1px solid var(--line); border-radius: 8px; padding: .75em .85em; background: var(--bg)">
+<div class="mono" style="font-size: .8em; color: var(--auth-ink); font-weight: 600">FRAME 0 · VERIFY → APPROVE</div>
+<div style="font-size: .875em; margin-top: .35em">Checks the one allowed liquidation shape:</div>
+<ul style="margin: .35em 0 0; padding-left: 1.1em; font-size: .875em">
+<li>selector + args</li>
+<li>nonce key = <span class="mono">hash(market, position)</span></li>
+<li>fresh oracle round in band</li>
+<li>unhealthy at two prices</li>
+<li>fee cap</li>
+</ul>
+</div>
+<div style="border: 1px solid var(--line); border-radius: 8px; padding: .75em .85em; background: var(--bg)">
+<div class="mono" style="font-size: .8em; color: var(--auth-ink); font-weight: 600">FRAME 1 · SENDER</div>
+<div style="font-size: .875em; margin-top: .35em">Calls <span class="mono">selfLiquidate</span>.</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="card layer exec {{ hl.exec }}" style="overflow: hidden; display: flex; flex-direction: column">
+<div class="band"></div>
+<div style="padding: 1.4em; display: flex; flex-direction: column; gap: 1em; flex: 1">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .5em"><span class="tag exec">2 · Execute</span><span class="pill now">Active</span></div>
+<div>
+<div style="font-weight: 600; font-size: 1.15em">Uniswap Foundation</div>
+<div style="font-size: .875em; color: var(--muted)">Uniswap v4 hook</div>
+</div>
+<p style="margin: 0">The market's venue settles collateral first, then swaps through the official PoolManager.</p>
+<div style="border: 1px solid var(--line); border-radius: 8px; padding: .75em .85em; background: var(--bg)">
+<div class="mono" style="font-size: .8em; color: var(--exec-ink); font-weight: 600">BACKSTOPHOOK</div>
+<ul style="margin: .35em 0 0; padding-left: 1.1em; font-size: .875em">
+<li>Authorizes on the swap's <span class="mono">sender</span>, never <span class="mono">hookData</span></li>
+<li>Uses <span class="mono">beforeSwapReturnDelta</span> to fill at the oracle price</li>
+</ul>
+</div>
+<p style="margin: 0; font-size: .875em; color: var(--muted)">Everyone else sees an ordinary pool.</p>
+</div>
+</div>
+
+<div class="card layer fund {{ hl.fund }}" style="overflow: hidden; display: flex; flex-direction: column">
+<div class="band"></div>
+<div style="padding: 1.4em; display: flex; flex-direction: column; gap: 1em; flex: 1">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .5em"><span class="tag fund">3 · Fund</span><span class="pill now">Active</span></div>
+<div>
+<div style="font-weight: 600; font-size: 1.15em">1inch</div>
+<div style="font-size: .875em; color: var(--muted)">Aqua + SwapVM</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: .5em">
+<div style="border: 1px solid var(--line); border-radius: 8px; padding: .75em .85em; background: var(--bg)">
+<div class="mono" style="font-size: .8em; color: var(--fund-ink); font-weight: 600">TIER 1 · AQUA MAKERS</div>
+<div style="font-size: .875em; margin-top: .35em">USDC stays in the makers' wallets; one balance backs every market. Our custom SwapVM opcode <span class="mono">LiquidationGate</span> lets an order fill only when the hook is the taker during a liquidation.</div>
+</div>
+<div style="border: 1px solid var(--line); border-radius: 8px; padding: .75em .85em; background: var(--bg)">
+<div class="mono" style="font-size: .8em; color: var(--fund-ink); font-weight: 600">TIER 2 · BACKSTOP</div>
+<div style="font-size: .875em; margin-top: .35em">Backstop deposits.</div>
+</div>
+<div style="border: 1px solid var(--line); border-radius: 8px; padding: .75em .85em; background: var(--bg)">
+<div class="mono" style="font-size: .8em; color: var(--fund-ink); font-weight: 600">TIER 3 · POOL CURVE</div>
+<div style="font-size: .875em; margin-top: .35em">Bounded by a <span class="mono">1%</span> minimum output.</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<section id="mempool" class="slide">
+<div class="wrap">
+<div class="eyebrow">05 · Why the alternative mempool</div>
+<h2 class="h2">Same transaction, two mempools.</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22em), 1fr)); gap: 1.1em; margin-top: 2em">
+<div class="card" style="padding: 1.5em; display: flex; flex-direction: column; gap: 1em">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5em">
+<span style="font-weight: 600; font-size: 1.2em">Canonical mempool</span>
+<span class="pill rej"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>Rejected</span>
+</div>
+<pre class="mono" style="margin: 0; white-space: pre-wrap; word-break: break-word; background: var(--sunk); border-radius: 8px; padding: 1em; font-size: .875em; line-height: 1.5">Frame transaction validation-prefix simulation failed: StorageReadNonSender</pre>
+<p style="margin: 0">Validation reads market and oracle storage, which the canonical rules forbid.</p>
+</div>
+<div class="card" style="padding: 1.5em; display: flex; flex-direction: column; gap: 1em">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5em">
+<span style="font-weight: 600; font-size: 1.2em">Alternative mempool</span>
+<span style="display: inline-flex; gap: .4em; flex-wrap: wrap"><span class="pill incl"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>Admitted</span><span class="pill incl"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>Included</span></span>
+</div>
+<p style="margin: 0">The account is a staked entity (<span class="mono">0.012 ETH</span>).</p>
+<p style="margin: 0">Keyed-nonce transactions where the sender pays for itself aren't capped per sender, so a crash can have many liquidations pending at once.</p>
+<a href="https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc" target="_blank" rel="noopener noreferrer" style="font-size: .9em; margin-top: auto">See the included transaction, block 2865</a>
+</div>
+</div>
+
+<div class="card" style="padding: 1.5em; margin-top: 1.1em; display: flex; flex-direction: column; gap: .9em">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5em">
+<span style="font-weight: 600">VERIFY frame gas</span>
+<span class="mono" style="font-size: 1.05em"><b style="font-weight: 600">94,168</b> <span style="color: var(--muted)">of 100,000 cap · 94.2%</span></span>
+</div>
+<div class="gauge" role="img" aria-label="VERIFY uses 94,168 gas of a 100,000 gas cap"><div class="gauge-fill" style="width: 94.168%"></div><div class="gauge-cap"></div></div>
+<div style="font-size: .8em; color: var(--muted)">Measured with <span class="mono">ethrex_simulateFrameTransaction</span> on the devnet.</div>
+</div>
+
+<div class="card" style="padding: 1.5em; margin-top: 1.1em; display: flex; flex-wrap: wrap; align-items: center; gap: 1em 2.5em">
+<span style="font-weight: 600">Crash scene, 12 positions</span>
+<span style="display: inline-flex; align-items: center; gap: .6em">Canonical <span class="pill tbd">[TBD]</span><span class="mono" style="color: var(--muted)">of 12</span></span>
+<span style="display: inline-flex; align-items: center; gap: .6em">Alternative <span class="pill tbd">[TBD]</span><span class="mono" style="color: var(--muted)">of 12</span></span>
+</div>
+</div>
+</section>
+
+<section id="cost" class="slide">
+<div class="wrap">
+<div style="display: flex; align-items: center; gap: .75em; flex-wrap: wrap"><span class="eyebrow">06 · Cost calculator</span><span class="pill est">Estimate</span></div>
+<h2 class="h2">What does a liquidation cost the borrower?</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr)); gap: 1.1em; margin-top: 2em; align-items: start">
+
+<div class="card" style="padding: 1.5em; display: flex; flex-direction: column; gap: 1.2em">
+<div style="display: flex; flex-direction: column; gap: .45em">
+<label for="calc-debt" style="font-weight: 600; font-size: .9em">Debt, USD (D)</label>
+<input id="calc-debt" class="field mono" type="number" min="0" step="100" inputmode="decimal" value="{{ debt }}" onChange="{{ onDebt }}">
+</div>
+<div style="display: flex; flex-direction: column; gap: .45em">
+<label for="calc-hf" style="font-weight: 600; font-size: .9em; display: flex; justify-content: space-between">Health factor (HF)<span class="mono" style="font-size: 1.25em">{{ hfLabel }}</span></label>
+<input id="calc-hf" class="range" type="range" min="0.81" max="0.999" step="0.001" value="{{ hf }}" onChange="{{ onHF }}">
+<div style="display: flex; flex-wrap: wrap; gap: .4em">
+<sc-for list="{{ presets }}" as="p" hint-placeholder-count="5">
+<button type="button" class="btn mono {{ p.cls }}" onClick="{{ p.pick }}" aria-pressed="{{ p.on }}" style="padding: 0 .75em; font-size: .85em">{{ p.label }}</button>
+</sc-for>
+</div>
+</div>
+<div style="border-top: 1px solid var(--line); padding-top: 1em; font-size: .85em; color: var(--muted); display: flex; flex-direction: column; gap: .3em">
+<div class="mono">L = 0.80 · T = 1.05 · s = 0.01</div>
+<div class="mono">CP = HF × D / L = {{ c.cp }}</div>
+<div class="mono">Insolvent below HF = L/(1−s) ≈ 0.808</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 1.1em; min-width: 0; grid-column: span 2">
+<sc-if value="{{ insolvent }}" hint-placeholder-val="{{ false }}">
+<div class="card" style="padding: 1.5em; border: 1.5px dashed var(--ink)">
+<div style="font-weight: 600; font-size: 1.15em">Insolvent: wound down fully, shortfall recorded as bad debt.</div>
+<p style="margin: .5em 0 0; color: var(--muted)">This applies to Aave v3, Aave v4 and Autolysis alike.</p>
+</div>
+</sc-if>
+<sc-if value="{{ solvent }}" hint-placeholder-val="{{ true }}">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14em), 1fr)); gap: 1.1em">
+<div class="card" style="padding: 1.3em; display: flex; flex-direction: column; gap: .8em">
+<div style="font-weight: 600">Aave v3</div>
+<div><div style="font-size: .8em; color: var(--muted)">Paid to the liquidator</div><div class="num" style="font-size: 2.3em; margin-top: .15em">{{ c.v3p }}</div></div>
+<div class="bar" aria-hidden="true"><div class="bar-fill" style="width: {{ bw.v3 }}"></div></div>
+<div style="font-size: .875em">Repays <span class="mono">{{ c.v3r }}</span> <span style="color: var(--muted)">({{ c.v3rule }})</span></div>
+<div style="font-size: .8em; color: var(--muted)">5% of repaid · <span class="mono">{{ c.v3per }}</span> per $100 repaid</div>
+</div>
+<div class="card" style="padding: 1.3em; display: flex; flex-direction: column; gap: .8em">
+<div style="font-weight: 600">Aave v4 <span style="font-weight: 400; color: var(--muted); font-size: .85em">Dec 2025 design</span></div>
+<div><div style="font-size: .8em; color: var(--muted)">Paid to the liquidator</div><div class="num" style="font-size: 2.3em; margin-top: .15em">{{ c.v4p }}</div></div>
+<div class="bar" aria-hidden="true"><div class="bar-fill" style="width: {{ bw.v4 }}"></div></div>
+<div style="font-size: .875em">Repays <span class="mono">{{ c.v4r }}</span> <span style="color: var(--muted)">(to target HF 1.05)</span></div>
+<div style="font-size: .8em; color: var(--muted)">4% of repaid · <span class="mono">{{ c.v4per }}</span> per $100 repaid</div>
+<sc-if value="{{ v4cap }}" hint-placeholder-val="{{ false }}"><div style="font-size: .8em; color: var(--muted)">The formula exceeds the debt here, so repayment is capped at the full debt.</div></sc-if>
+</div>
+<div class="card" style="padding: 1.3em; display: flex; flex-direction: column; gap: .8em; border: 2px solid var(--ink)">
+<div style="font-weight: 600">Autolysis</div>
+<div><div style="font-size: .8em; color: var(--muted)">Cost to the borrower</div><div class="num" style="font-size: 2.3em; margin-top: .15em">{{ c.lo }}–{{ c.hi }}</div></div>
+<div class="bar" aria-hidden="true"><div class="bar-fill ours" style="margin-left: {{ bw.alo }}; width: {{ bw.aw }}"></div></div>
+<div style="font-size: .875em">Repays <span class="mono">{{ c.ar }}</span>, sells <span class="mono">{{ c.sold }}</span> of collateral</div>
+<div style="font-size: .8em; color: var(--muted)">0.2–1.1% of sold · <span class="mono">{{ c.aper }}</span> per $100 repaid</div>
+</div>
+</div>
+<div class="card" style="padding: 1.2em 1.4em">
+<p style="margin: 0; font-size: 1.05em">At these inputs, Autolysis repays <span class="mono">≈ {{ c.ar }}</span> for <span class="mono">≈ {{ c.lo }}–{{ c.hi }}</span>. Aave v3 pays a liquidator <span class="mono">{{ c.v3p }}</span>; Aave v4 pays <span class="mono">{{ c.v4p }}</span>. That is most of the 5%, net.</p>
+</div>
+</sc-if>
+<details class="faq" style="border-top: 1px solid var(--line)">
+<summary><span>Formulas</span><span class="pm" aria-hidden="true"></span></summary>
+<div class="ans mono" style="font-size: .85em; display: flex; flex-direction: column; gap: .5em">
+<div>Aave v3: if HF ≥ 0.95 repay 50% of D, else 100%. Paid = 5% of repaid.</div>
+<div>Aave v4: r = (T·D − CP·L) / (T − L·1.04). Paid = 4% of r.</div>
+<div>Autolysis: r = (T·D − CP·L) / (T − L/(1−s)). Sold = r/(1−s). Cost = sold × (0.2% to 1.1%): maker spread 0.2–0.8% plus gas capped at 0.3%.</div>
+</div>
+</details>
+<p style="margin: 0; font-size: .875em; color: var(--muted)">Costs move, they don't disappear: borrowers still pay gas, the spread and slippage, just not the bonus.</p>
+</div>
+
+</div>
+</div>
+</section>
+
+<section id="proof" class="slide">
+<div class="wrap">
+<div class="eyebrow">07 · Proof</div>
+<h2 class="h2">Verify it yourself.</h2>
+<p class="lead">Every claim on this page has a row here, with its status spelled out.</p>
+
+<div class="card" style="margin-top: 2em; padding: 1.5em; display: flex; flex-direction: column; gap: 1.1em">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .6em">
+<span class="tag auth">Authorize</span><span class="tag exec">Execute</span>
+<span style="font-weight: 600; font-size: 1.1em">Keyless, self-paid liquidation</span>
+<span class="pill incl" style="margin-left: auto"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>Included</span>
+<span class="pill">On the devnet</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .2em .5em">
+<span style="font-size: .875em; color: var(--muted)">Block 2865 · both frames succeeded</span>
+<code class="hash" title="0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56">0x913762…40fe56</code>
+<button type="button" class="copy" onClick="{{ cp.tx }}" aria-label="Copy transaction hash"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 0 1 1-1h10"></path></svg><span>{{ cl.tx }}</span></button>
+<a class="ext" href="https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc" target="_blank" rel="noopener noreferrer" aria-label="Open the transaction in the devnet explorer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></a>
+</div>
+<div class="tbox">
+<table class="t">
+<thead><tr><th>Before → after</th><th>Before</th><th>After</th></tr></thead>
+<tbody>
+<tr><td>Health factor</td><td class="mono">0.960</td><td class="mono" style="font-weight: 600">1.055</td></tr>
+<tr><td>Debt (USDC)</td><td class="mono">0.1500</td><td class="mono">0.0936</td></tr>
+<tr><td>Collateral (WETH)</td><td class="mono">0.1000</td><td class="mono">0.0686</td></tr>
+<tr><td>Hook tokens / claims</td><td class="mono">0 / 0</td><td class="mono">0 / 0</td></tr>
+<tr><td>Gas billed from collateral to the account</td><td class="mono" colspan="2">0.0000939 WETH</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div class="card" style="margin-top: 1.1em; overflow: hidden">
+<div class="prow head"><div>Layer</div><div>Claim</div><div>Status</div><div>Evidence</div></div>
+
+<div class="prow">
+<div><span class="tag auth">Authorize</span></div>
+<div><div style="font-weight: 600">Staked account</div><div style="font-size: .875em; color: var(--muted)">0.012 ETH in NaiveStakingRegistry</div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill">On the devnet</span><span class="pill tbd">[TBD link]</span></div>
+<div style="display: flex; flex-direction: column; gap: .1em">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .2em .4em"><span style="font-size: .75em; color: var(--muted); width: 3.6em">Account</span><code class="hash" title="0x91233f8dEf56AC435a7F658AC8F96C591939cd40">0x91233f…39cd40</code><button type="button" class="copy" onClick="{{ cp.acct }}" aria-label="Copy account address"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 0 1 1-1h10"></path></svg><span>{{ cl.acct }}</span></button></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .2em .4em"><span style="font-size: .75em; color: var(--muted); width: 3.6em">Stake tx</span><code class="hash" title="0x1e5a936bec5ef1bf15d8627087912f1def6b22a2a413cc469034e9ea312fed4b">0x1e5a93…2fed4b</code><button type="button" class="copy" onClick="{{ cp.stake }}" aria-label="Copy stake transaction hash"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 0 1 1-1h10"></path></svg><span>{{ cl.stake }}</span></button></div>
+</div>
+</div>
+
+<div class="prow">
+<div><span class="tag auth">Authorize</span></div>
+<div><div style="font-weight: 600">Canonical mempool rejects the same transaction</div><div class="mono" style="font-size: .8em; color: var(--muted); word-break: break-word; margin-top: .25em">Frame transaction validation-prefix simulation failed: StorageReadNonSender</div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill rej"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>Rejected</span></div>
+<div style="font-size: .875em; color: var(--muted)">Verbatim error text</div>
+</div>
+
+<div class="prow">
+<div><span class="tag exec">Execute</span></div>
+<div><div style="font-weight: 600">The same transaction sold through our hook on the official v4 PoolManager</div><div style="font-size: .875em; color: var(--muted)">Devnet PoolManager</div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill incl"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>Included</span><span class="pill">On the devnet</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .2em .4em"><code class="hash" title="0x6bF9Aa9c04fd001385742d61f6818C3236429848">0x6bF9Aa…429848</code><button type="button" class="copy" onClick="{{ cp.pmdev }}" aria-label="Copy devnet PoolManager address"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 0 1 1-1h10"></path></svg><span>{{ cl.pmdev }}</span></button><a class="ext" href="https://explorer.altmempool.wtf/tx/0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56?node=https%3A%2F%2Faltmempool.forshtat.com%2Frpc" target="_blank" rel="noopener noreferrer" aria-label="Open the transaction that swapped through this PoolManager"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></a></div>
+</div>
+
+<div class="prow">
+<div><span class="tag exec">Execute</span></div>
+<div><div style="font-weight: 600">Full liquidation through the official Unichain PoolManager</div><div style="font-size: .875em; color: var(--muted)">Unichain mainnet fork · run <span class="mono">just fork-uniswap</span> · Uniswap confirmed a fork test is enough</div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill">On a Unichain fork</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .2em .4em"><code class="hash" title="0x1f98400000000000000000000000000000000004">0x1f9840…000004</code><button type="button" class="copy" onClick="{{ cp.pmuni }}" aria-label="Copy Unichain PoolManager address"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 0 1 1-1h10"></path></svg><span>{{ cl.pmuni }}</span></button><a class="ext" href="https://github.com/jmakwana0x1/autolysis" target="_blank" rel="noopener noreferrer" aria-label="Open the repo to run the fork test"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></a></div>
+</div>
+
+<div class="prow">
+<div><span class="tag fund">Fund</span></div>
+<div><div style="font-weight: 600">A real fill through our gated SwapVM router against the official Aqua registry</div><div style="font-size: .875em; color: var(--muted)">Unichain mainnet fork at block 63,190,327 · run <span class="mono">just fork-c2</span> · the maker's wallet pays USDC and receives WETH; a stranger's fill reverts with <span class="mono">LiquidationGateClosed</span></div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill">On a Unichain fork</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .2em .4em"><code class="hash" title="0x1111113ccf1426a8e30e2bff5e005d929bf6a90a">0x111111…f6a90a</code><button type="button" class="copy" onClick="{{ cp.aqua }}" aria-label="Copy Aqua registry address"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 0 1 1-1h10"></path></svg><span>{{ cl.aqua }}</span></button><a class="ext" href="https://github.com/jmakwana0x1/autolysis" target="_blank" rel="noopener noreferrer" aria-label="Open the repo to run the fork test"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></a></div>
+</div>
+
+<div class="prow">
+<div><span class="tag all">All layers</span></div>
+<div><div style="font-weight: 600">Crash scene (12 positions), replacement and attack scenes</div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill tbd">[TBD]</span></div>
+<div style="font-size: .875em; color: var(--muted)">Links [TBD]</div>
+</div>
+
+<div class="prow">
+<div><span class="tag all">All layers</span></div>
+<div><div style="font-weight: 600"><span class="mono">104</span> Foundry tests, <span class="mono">9</span> SwapVM tests, <span class="mono">41</span> kit tests</div><div style="font-size: .875em; color: var(--muted)">Stateful invariants, fuzzing, and mutation tests for every validation rule</div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill">Local test</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: .4em"><span style="font-size: .875em; color: var(--muted)">CI badge</span><span class="pill tbd">[TBD]</span></div>
+</div>
+
+<div class="prow">
+<div><span class="tag all">All layers</span></div>
+<div><div style="font-weight: 600">Source code</div></div>
+<div style="display: flex; flex-wrap: wrap; gap: .35em"><span class="pill">Public repo</span></div>
+<div><a href="https://github.com/jmakwana0x1/autolysis" target="_blank" rel="noopener noreferrer" class="mono" style="font-size: .875em; word-break: break-all">github.com/jmakwana0x1/autolysis</a></div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="prior-art" class="slide">
+<div class="wrap">
+<div class="eyebrow">08 · Prior art, credited</div>
+<h2 class="h2">Built on good ideas, with the operator removed.</h2>
+<div class="tbox" style="margin-top: 2em">
+<table class="t" style="min-width: 40em">
+<thead><tr><th style="width: 20%">Design</th><th style="width: 40%">What it does</th><th>How Autolysis relates</th></tr></thead>
+<tbody>
+<tr><td style="font-weight: 600">Aave v4<div style="font-weight: 400; font-size: .85em; color: var(--muted)">Dec 2025 design</div></td><td>Sells only to a target HF. Still pays a third party a <span class="mono">~4–5%</span> bonus. <a href="https://governance.aave.com/t/overview-of-aave-v4-s-liquidation-engine/23531" target="_blank" rel="noopener noreferrer">Source</a></td><td><b>Credited:</b> the “sell to target” idea.</td></tr>
+<tr><td style="font-weight: 600">Morpho pre-liquidation</td><td>Gradual close factor before full liquidation.</td><td><b>Credited:</b> our gradual close-factor schedule, <span class="mono">10%</span> at HF 1.00 rising to <span class="mono">100%</span> at 0.95.</td></tr>
+<tr><td style="font-weight: 600">DeFi Saver automation</td><td>Opt-in bots; <span class="mono">0.05%</span> fee plus gas (<a href="https://help.defisaver.com/automations/fees" target="_blank" rel="noopener noreferrer">fees</a>). Reports protecting <span class="mono">$446M</span> of Aave v3 collateral in one selloff (<a href="https://cryptobriefing.com/defi-saver-aave-v3-liquidation-protection/" target="_blank" rel="noopener noreferrer">report</a>).</td><td>Proves demand. But it's run by one operator; Autolysis is a property of the market itself, with no operator.</td></tr>
+<tr><td style="font-weight: 600">Aave repay-with-collateral</td><td>The borrower repays debt using their collateral.</td><td>Needs the borrower awake and signing.</td></tr>
+<tr style="background: var(--sunk)"><td style="font-weight: 600">Autolysis</td><td>Sells to a target HF through the market's own account. No third-party bonus, no operator, no borrower signature.</td><td>Gas, spread and slippage remain. Most of the 5%, net, stays with the borrower.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+
+<section id="faq" class="slide">
+<div class="wrap">
+<div class="eyebrow">09 · FAQ</div>
+<h2 class="h2">Questions a skeptical judge should ask.</h2>
+<div style="margin-top: 1.6em; border-top: 1px solid var(--line)">
+
+<details class="faq"><summary><span class="tag all">Why</span><span>Why does this need to exist?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Liquidation is DeFi's most important safety mechanism and its most extractive one. Aave has processed 310,000+ liquidations worth ~$4.65B, and outside bots are paid a bonus of about 5% of the debt, at the worst moment for the borrower.</p><p>Qin et al. (2021) found 74% of fixed-spread liquidations paid above-average transaction fees, and that existing designs “sell excessive amounts of discounted collateral at the borrowers' expense.”</p></div></details>
+
+<details class="faq"><summary><span class="tag all">Why</span><span>Why not just keep liquidators?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Liquidators were a workaround for loans that couldn't act on their own. Each of their six jobs (watch, sign, bring capital, pay gas, hold price risk, act fast) has a replacement inside the market; see <a href="#insight">the insight table</a>. The bonus pays for work the market can now do itself.</p></div></details>
+
+<details class="faq"><summary><span class="tag auth">Authorize</span><span>If nobody gets a bonus, who sends the transaction?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Anyone. Broadcasting costs nothing, because the account pays. The borrower's app, a watcher or any node can do it; builders are paid by the priority fee. So: no privileged keeper, not no keeper.</p></div></details>
+
+<details class="faq"><summary><span class="tag all">Cost</span><span>So liquidation is free?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>No. Gas, spread and slippage remain; we quote net savings. Autolysis removes most of the 5%, net. Try the <a href="#cost">cost calculator</a>.</p></div></details>
+
+<details class="faq"><summary><span class="tag auth">Authorize</span><span>Can collateral pay its own gas?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Not in the same transaction. EIP-8141 charges the max cost at approval, so the account keeps a prefunded tank, refilled from collateral afterwards.</p></div></details>
+
+<details class="faq"><summary><span class="tag fund">Fund</span><span>Can someone sandwich it?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>The Aqua and backstop tiers fill at the oracle price. Only the curve tier can be moved, and at most to the 1% minOut floor.</p></div></details>
+
+<details class="faq"><summary><span class="tag auth">Authorize</span><span>What if the alt mempool stalls in a crash?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Lender fallback: below HF 0.95, after 3 rounds with no self-liquidation, a classic 5% liquidation opens to anyone. An invariant proves it never pre-empts self-liquidation.</p></div></details>
+
+<details class="faq"><summary><span class="tag auth">Authorize</span><span>Can someone grief the account into paying for failed attempts?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>VERIFY checks the round, the band, two-price health and the fee cap. At most one failed attempt is billed per price round per position.</p></div></details>
+
+<details class="faq"><summary><span class="tag auth">Authorize</span><span>Why not ERC-4337?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Autolysis is built on EIP-8141 frame transactions: the account's VERIFY frame is the authorization and the account is both sender and gas payer, so no key signs. Its validation reads market and oracle storage, which the ERC-8421 alternative mempool admits from a staked account.</p><p><span class="pill tbd">[TBD]</span> Direct comparison with ERC-4337.</p></div></details>
+
+<details class="faq"><summary><span class="tag exec">Execute</span><span>Why a hook and not a router?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>The hook sits inside the official PoolManager's swap path. BackstopHook authorizes on the swap's <span class="mono">sender</span> (never hookData) and uses <span class="mono">beforeSwapReturnDelta</span> to fill at the oracle price, while everyone else sees an ordinary pool.</p></div></details>
+
+<details class="faq"><summary><span class="tag fund">Fund</span><span>Why Aqua?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Aqua makers' USDC stays in their wallets, and one balance backs every market. Our LiquidationGate opcode lets an order fill only when the hook is the taker during a liquidation, so makers quote at the oracle price for a spread without exposing their orders to anyone else.</p></div></details>
+
+<details class="faq"><summary><span class="tag auth">Authorize</span><span>Oracle wicks?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>The position must be unhealthy at both the cited and the latest round, within a 0.5% band. A breaker needs two rounds for moves over 10%.</p></div></details>
+
+<details class="faq"><summary><span class="tag auth">Authorize</span><span>What is EXO-010?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>A proposed rule (EXO-010): a narrowly scoped ERC-8421 reputation rule. An invalidation caused by an outside state change the sender didn't cause, such as an oracle round moving or the borrower repaying, shouldn't count against the sender. Malformed or self-caused invalidations still count.</p></div></details>
+
+<details class="faq"><summary><span class="tag all">Status</span><span>Is it live on mainnet?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>No. EIP-8141 and ERC-8421 are drafts on an experimental devnet. The Uniswap and Aqua parts run against official contracts on a Unichain mainnet fork.</p></div></details>
+
+<details class="faq"><summary><span class="tag all">Adoption</span><span>Would this work with Aave or Morpho?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p>Autolysis is a liquidation route, not a new lending protocol. Any market implementing <span class="mono">ISelfLiquidatingMarket</span> can adopt it. Our demo market is deliberately minimal.</p></div></details>
+
+</div>
+</div>
+</section>
+
+<section id="limits" class="slide">
+<div class="wrap">
+<div class="eyebrow">10 · Limitations, honestly</div>
+<h2 class="h2">What this does not solve yet.</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19em), 1fr)); gap: 1em; margin-top: 2em">
+<div class="card" style="padding: 1.3em"><div style="display: flex; gap: .5em; align-items: center; flex-wrap: wrap"><span class="tag auth">Authorize</span><span style="font-weight: 600">Draft EIPs</span></div><p style="margin: .6em 0 0; color: var(--muted)">EIP-8141 and ERC-8421 are drafts on an experimental devnet.</p></div>
+<div class="card" style="padding: 1.3em"><div style="display: flex; gap: .5em; align-items: center; flex-wrap: wrap"><span class="tag auth">Authorize</span><span style="font-weight: 600">Prefunded gas tank</span></div><p style="margin: .6em 0 0; color: var(--muted)">The account holds ETH up front; collateral refills it afterwards.</p></div>
+<div class="card" style="padding: 1.3em"><div style="display: flex; gap: .5em; align-items: center; flex-wrap: wrap"><span class="tag fund">Fund</span><span style="font-weight: 600">1% slippage bound</span></div><p style="margin: .6em 0 0; color: var(--muted)">On the curve tier, the last-resort fill.</p></div>
+<div class="card" style="padding: 1.3em"><div style="display: flex; gap: .5em; align-items: center; flex-wrap: wrap"><span class="tag exec">Execute</span><span style="font-weight: 600">WETH-only collateral</span></div><p style="margin: .6em 0 0; color: var(--muted)">One collateral asset in the demo market.</p></div>
+<div class="card" style="padding: 1.3em"><div style="display: flex; gap: .5em; align-items: center; flex-wrap: wrap"><span class="tag fund">Fund</span><span style="font-weight: 600">Opt-in backstop</span></div><p style="margin: .6em 0 0; color: var(--muted)">Backstop liquidity is opt-in.</p></div>
+<div class="card" style="padding: 1.3em"><div style="display: flex; gap: .5em; align-items: center; flex-wrap: wrap"><span class="tag all">Any design</span><span style="font-weight: 600">Gap-down crashes</span></div><p style="margin: .6em 0 0; color: var(--muted)">Below HF ~0.81, bad debt appears under any design.</p></div>
+</div>
+</div>
+</section>
+
+<footer id="sources" class="slide">
+<div class="wrap" style="padding-bottom: 4em">
+<div class="eyebrow">11 · Sources</div>
+<ol style="margin: 1.2em 0 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: .55em; max-width: 48em">
+<li>Qin et al., <a href="https://arxiv.org/abs/2106.06389" target="_blank" rel="noopener noreferrer">“An Empirical Study of DeFi Liquidations”</a></li>
+<li>Aave Labs, <a href="https://governance.aave.com/t/overview-of-aave-v4-s-liquidation-engine/23531" target="_blank" rel="noopener noreferrer">“Overview of Aave V4's Liquidation Engine”</a></li>
+<li>DeFi Saver, <a href="https://help.defisaver.com/automations/fees" target="_blank" rel="noopener noreferrer">automation fees</a></li>
+<li>DeFi Saver, <a href="https://cryptobriefing.com/defi-saver-aave-v3-liquidation-protection/" target="_blank" rel="noopener noreferrer">$446.3M protected</a></li>
+<li>Aave liquidation figures (Aave Labs, Feb 2026) <span class="pill tbd">[TBD link]</span></li>
+</ol>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1em; margin-top: 3em; padding-top: 1.5em; border-top: 1px solid var(--line); font-size: .9em; color: var(--muted)">
+<span><span style="color: var(--ink); font-weight: 600">Autolysis: self-liquidating loans</span> · Team: Jay (solo)</span>
+<span>Built at ETHGlobal Mumbai 2026 · <a href="https://github.com/jmakwana0x1/autolysis" target="_blank" rel="noopener noreferrer">GitHub</a></span>
+</div>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["auto","light","dark"],"default":"auto"},"$preview":{"width":1440,"height":10400}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { present: false, theme: null, slide: 0, step: 0, playing: false, debt: '10000', hf: 0.99, copied: null };
+    this.timer = null;
+    this.copyTimer = null;
+  }
+  componentWillUnmount() {
+    if (this.timer) clearInterval(this.timer);
+    if (this.copyTimer) clearTimeout(this.copyTimer);
+  }
+  secs(root) { return Array.prototype.slice.call(root.querySelectorAll('.slide')); }
+  navH(root) { var n = root.querySelector('nav'); return n ? n.offsetHeight : 0; }
+  absTop(root, el) { return el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop; }
+  idx(root) {
+    var secs = this.secs(root);
+    var nav = this.navH(root);
+    var line = root.scrollTop + nav + (root.clientHeight - nav) * 0.35;
+    var i = 0;
+    for (var k = 0; k < secs.length; k++) { if (this.absTop(root, secs[k]) <= line) i = k; }
+    return i;
+  }
+  windowIdx(root) {
+    var secs = this.secs(root);
+    var line = window.innerHeight * 0.35;
+    var i = 0;
+    for (var k = 0; k < secs.length; k++) { if (secs[k].getBoundingClientRect().top <= line) i = k; }
+    return i;
+  }
+  go(root, i, instant) {
+    var secs = this.secs(root);
+    if (!secs.length) return;
+    var k = Math.max(0, Math.min(secs.length - 1, i));
+    var top = this.absTop(root, secs[k]) - this.navH(root);
+    root.scrollTo({ top: Math.max(0, top), behavior: instant ? 'auto' : 'smooth' });
+    if (k !== this.state.slide) this.setState({ slide: k });
+  }
+  next(root) {
+    var secs = this.secs(root);
+    var i = this.idx(root);
+    var s = secs[i];
+    if (!s) return;
+    var vh = root.clientHeight;
+    var nav = this.navH(root);
+    var top = root.scrollTop;
+    var bottom = this.absTop(root, s) + s.offsetHeight;
+    if (bottom > top + vh + 8) {
+      root.scrollTo({ top: Math.min(top + (vh - nav) * 0.85, bottom - vh), behavior: 'smooth' });
+    } else {
+      this.go(root, i + 1);
+    }
+  }
+  prev(root) {
+    var secs = this.secs(root);
+    var i = this.idx(root);
+    if (!secs[i]) return;
+    var start = this.absTop(root, secs[i]) - this.navH(root);
+    if (root.scrollTop > start + 8) this.go(root, i); else this.go(root, i - 1);
+  }
+  setPresent(root, on) {
+    var self = this;
+    if (!root) return;
+    if (on) {
+      var i = this.windowIdx(root);
+      this.setState({ present: true, slide: i }, function () {
+        try { root.focus({ preventScroll: true }); } catch (x) {}
+        self.go(root, i, true);
+      });
+    } else {
+      var j = this.idx(root);
+      this.setState({ present: false }, function () {
+        var s = self.secs(root)[j];
+        if (s) s.scrollIntoView({ block: 'start' });
+      });
+    }
+  }
+  onKey(e) {
+    if (!this.state.present) return;
+    var t = e.target;
+    var tag = t && t.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    var root = e.currentTarget;
+    var k = e.key;
+    if (k === 'ArrowDown' || k === 'ArrowRight' || k === 'PageDown') { e.preventDefault(); this.next(root); }
+    else if (k === 'ArrowUp' || k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); this.prev(root); }
+    else if (k === 'Home') { e.preventDefault(); this.go(root, 0); }
+    else if (k === 'End') { e.preventDefault(); this.go(root, 999); }
+    else if (k === 'Escape') { e.preventDefault(); this.setPresent(root, false); }
+  }
+  onScroll(e) {
+    if (!this.state.present) return;
+    var i = this.idx(e.currentTarget);
+    if (i !== this.state.slide) this.setState({ slide: i });
+  }
+  stopPlay() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.setState({ playing: false });
+  }
+  play() {
+    var self = this;
+    if (this.state.playing) { this.stopPlay(); return; }
+    var start = this.state.step >= 4 ? 0 : this.state.step;
+    this.setState({ playing: true, step: start });
+    this.timer = setInterval(function () {
+      var n = self.state.step + 1;
+      if (n > 4) { self.stopPlay(); } else { self.setState({ step: n }); }
+      if (n >= 4) { self.stopPlay(); }
+    }, 1700);
+  }
+  setStep(n) {
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.setState({ playing: false, step: Math.max(0, Math.min(4, n)) });
+  }
+  copy(key, text) {
+    var self = this;
+    var done = function (ok) {
+      self.setState({ copied: key + (ok ? ':ok' : ':fail') });
+      if (self.copyTimer) clearTimeout(self.copyTimer);
+      self.copyTimer = setTimeout(function () { self.setState({ copied: null }); }, 1800);
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+      } else { done(false); }
+    } catch (x) { done(false); }
+  }
+  renderVals() {
+    var self = this;
+    var st = this.state;
+    var theme = st.theme || this.props.theme || 'auto';
+    var themeNames = { auto: 'Theme: Auto', light: 'Theme: Light', dark: 'Theme: Dark' };
+
+    var STEPS = [
+      { name: 'VERIFY', key: 'auth', layer: 'Authorize', detail: "Frame 0 checks the one allowed liquidation shape: selector and args, nonce key = hash(market, position), a fresh oracle round in band, unhealthy at two prices, and the fee cap. Then it APPROVEs. The market's contract account is the sender and gas payer." },
+      { name: 'Admitted', key: 'auth', layer: 'Authorize', detail: "The ERC-8421 alternative mempool admits it from a staked account (0.012 ETH). The canonical mempool rejects the same transaction, because validation reads market and oracle storage." },
+      { name: 'SENDER', key: 'exec', layer: 'Execute', detail: "Frame 1 calls selfLiquidate. The market's venue settles collateral first, then swaps through the official Uniswap v4 PoolManager. BackstopHook authorizes on the swap's sender and fills at the oracle price with beforeSwapReturnDelta." },
+      { name: 'Tier filled', key: 'fund', layer: 'Fund', detail: "Tier 1: Aqua makers, whose orders LiquidationGate opens only to the hook during a liquidation. Tier 2: backstop deposits. Tier 3: the pool curve, bounded by a 1% minimum output." },
+      { name: 'Gas refilled', key: 'auth', layer: 'Authorize', detail: "The account's prefunded ETH tank is refilled from collateral, capped at 0.3% of what's sold." }
+    ];
+    var steps = STEPS.map(function (s, i) {
+      return {
+        n: String(i + 1), name: s.name, key: s.key, layer: s.layer,
+        cls: i === st.step ? 'is-active' : (i < st.step ? 'is-done' : ''),
+        current: i === st.step ? 'step' : 'false',
+        pick: function () { self.setStep(i); }
+      };
+    });
+    var curS = STEPS[st.step];
+    var cur = { n: String(st.step + 1), name: curS.name, key: curS.key, layer: curS.layer, detail: curS.detail };
+    var hl = { auth: curS.key === 'auth' ? 'is-on' : '', exec: curS.key === 'exec' ? 'is-on' : '', fund: curS.key === 'fund' ? 'is-on' : '' };
+
+    var L = 0.8, T = 1.05, s = 0.01;
+    var D = Math.max(0, parseFloat(st.debt) || 0);
+    var hf = st.hf;
+    var CP = hf * D / L;
+    var insolvent = hf < L / (1 - s);
+    var m = function (n) { return '$' + Math.round(n).toLocaleString('en-US'); };
+    var v3r = hf >= 0.95 ? 0.5 * D : D;
+    var v3p = 0.05 * v3r;
+    var v4raw = (T * D - CP * L) / (T - L * 1.04);
+    var v4cap = v4raw > D;
+    var v4r = Math.min(Math.max(v4raw, 0), D);
+    var v4p = 0.04 * v4r;
+    var ar = Math.max(0, (T * D - CP * L) / (T - L / (1 - s)));
+    var sold = ar / (1 - s);
+    var lo = sold * 0.002;
+    var hi = sold * 0.011;
+    var max = Math.max(v3p, v4p, hi) || 1;
+    var pct = function (x) { return (Math.max(0, Math.min(1, x)) * 100).toFixed(2) + '%'; };
+    var bw = { v3: pct(v3p / max), v4: pct(v4p / max), alo: pct(lo / max), aw: pct(Math.max((hi - lo) / max, 0.01)) };
+    var c = {
+      cp: m(CP),
+      v3r: m(v3r), v3p: m(v3p), v3rule: hf >= 0.95 ? '50% of debt, HF ≥ 0.95' : '100% of debt, HF < 0.95', v3per: '$5.00',
+      v4r: m(v4r), v4p: m(v4p), v4per: '$4.00',
+      ar: m(ar), sold: m(sold), lo: m(lo), hi: m(hi),
+      aper: ar > 0 ? ('$' + (lo / ar * 100).toFixed(2) + '–$' + (hi / ar * 100).toFixed(2)) : '$0.00'
+    };
+    var presets = [0.99, 0.95, 0.90, 0.85, 0.81].map(function (v) {
+      var on = Math.abs(hf - v) < 1e-9;
+      return { label: v.toFixed(2), on: on ? 'true' : 'false', cls: on ? 'is-on' : '', pick: function () { self.setState({ hf: v }); } };
+    });
+
+    var VALS = {
+      tx: '0x913762f6f96a17f2063a060c3b1ebfbd6c6af70c1f2a9e5a94511ea81440fe56',
+      acct: '0x91233f8dEf56AC435a7F658AC8F96C591939cd40',
+      stake: '0x1e5a936bec5ef1bf15d8627087912f1def6b22a2a413cc469034e9ea312fed4b',
+      pmdev: '0x6bF9Aa9c04fd001385742d61f6818C3236429848',
+      pmuni: '0x1f98400000000000000000000000000000000004',
+      aqua: '0x1111113ccf1426a8e30e2bff5e005d929bf6a90a'
+    };
+    var cp = {}, cl = {};
+    Object.keys(VALS).forEach(function (k) {
+      cp[k] = function () { self.copy(k, VALS[k]); };
+      cl[k] = st.copied === k + ':ok' ? 'Copied' : (st.copied === k + ':fail' ? 'Copy blocked' : 'Copy');
+    });
+
+    var root = function (e) { return e.currentTarget.closest('.root'); };
+    var total = 11;
+    var sl = Math.min(st.slide + 1, total);
+
+    return {
+      rootCls: theme + (st.present ? ' present' : ''),
+      themeLabel: themeNames[theme] || 'Theme: Auto',
+      presentLabel: st.present ? 'Exit present' : 'Present',
+      presentPressed: st.present ? 'true' : 'false',
+      presentCls: st.present ? 'is-on' : '',
+      slideLabel: (sl < 10 ? '0' + sl : String(sl)) + ' / ' + total,
+      onPresent: function (e) { self.setPresent(root(e), !st.present); },
+      onTheme: function () { var order = ['auto', 'light', 'dark']; self.setState({ theme: order[(order.indexOf(theme) + 1) % 3] }); },
+      onKey: function (e) { self.onKey(e); },
+      onScroll: function (e) { self.onScroll(e); },
+      onPrevSlide: function (e) { self.prev(root(e)); },
+      onNextSlide: function (e) { self.next(root(e)); },
+      steps: steps, cur: cur, hl: hl,
+      railW: (st.step / 4 * 100) + '%',
+      playLabel: st.playing ? 'Pause' : (st.step >= 4 ? 'Replay' : 'Run the liquidation'),
+      onPlay: function () { self.play(); },
+      onStepPrev: function () { self.setStep(st.step - 1); },
+      onStepNext: function () { self.setStep(st.step + 1); },
+      debt: st.debt, hf: st.hf, hfLabel: hf.toFixed(3),
+      onDebt: function (e) { self.setState({ debt: e.target.value }); },
+      onHF: function (e) { var v = parseFloat(e.target.value); if (!isNaN(v)) self.setState({ hf: v }); },
+      presets: presets,
+      insolvent: insolvent, solvent: !insolvent, v4cap: v4cap,
+      c: c, bw: bw, cp: cp, cl: cl
+    };
+  }
+}
+</script>
+</body>
+</html>
